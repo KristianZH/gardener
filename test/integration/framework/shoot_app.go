@@ -158,6 +158,42 @@ func (o *GardenerTestOperation) HTTPGet(ctx context.Context, url string) (*http.
 	return httpClient.Do(httpRequest)
 }
 
+// WaitUntilPodIsRunning waits until the pod with <podName> is running
+func (o *GardenerTestOperation) WaitUntilPodIsRunning(ctx context.Context, podName, podNamespace string, c kubernetes.Interface) error {
+	return wait.PollImmediateUntil(defaultPollInterval, func() (bool, error) {
+		pod := &corev1.Pod{}
+		if err := c.Client().Get(ctx, client.ObjectKey{Namespace: podNamespace, Name: podName}, pod); err != nil {
+			return false, err
+		}
+		if !health.IsPodReady(pod) {
+			o.Logger.Infof("Waiting for %s to be ready!!", podName)
+			return false, nil
+		}
+
+		return true, nil
+
+	}, ctx.Done())
+}
+
+// WaitUntilPodIsRunningWithLabels waits until the pod with <podLabels> is running
+func (o *GardenerTestOperation) WaitUntilPodIsRunningWithLabels(ctx context.Context, labels labels.Selector, podNamespace string, c kubernetes.Interface) error {
+	return wait.PollImmediateUntil(defaultPollInterval, func() (bool, error) {
+		pod, err := o.GetFirstRunningPodWithLabels(ctx, labels, podNamespace, c)
+
+		if err != nil {
+			return false, err
+		}
+
+		if !health.IsPodReady(pod) {
+			o.Logger.Infof("Waiting for %s to be ready!!", pod.Name)
+			return false, nil
+		}
+
+		return true, nil
+
+	}, ctx.Done())
+}
+
 // WaitUntilDeploymentIsRunning waits until the deployment with <deploymentName> is running
 func (o *GardenerTestOperation) WaitUntilDeploymentIsRunning(ctx context.Context, deploymentName, deploymentNamespace string, c kubernetes.Interface) error {
 	return wait.PollImmediateUntil(defaultPollInterval, func() (bool, error) {
@@ -335,7 +371,7 @@ func EnsureDirectories(helm Helm) error {
 
 // PodExecByLabel executes a command inside pods filtered by label
 func (o *GardenerTestOperation) PodExecByLabel(ctx context.Context, podLabels labels.Selector, podContainer, command, namespace string, client kubernetes.Interface) (io.Reader, error) {
-	pod, err := o.getFirstRunningPodWithLabels(ctx, podLabels, namespace, client)
+	pod, err := o.GetFirstRunningPodWithLabels(ctx, podLabels, namespace, client)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +404,7 @@ func (o *GardenerTestOperation) GetDashboardPodIP(ctx context.Context) (string, 
 		"app": "kubernetes-dashboard",
 	}))
 
-	dashboardPod, err := o.getFirstRunningPodWithLabels(ctx, dashboardLabels, metav1.NamespaceSystem, o.ShootClient)
+	dashboardPod, err := o.GetFirstRunningPodWithLabels(ctx, dashboardLabels, metav1.NamespaceSystem, o.ShootClient)
 	if err != nil {
 		return "", err
 	}
