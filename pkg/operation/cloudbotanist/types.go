@@ -15,6 +15,8 @@
 package cloudbotanist
 
 import (
+	"net"
+
 	"github.com/gardener/gardener/pkg/operation"
 	"github.com/gardener/gardener/pkg/operation/common"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -44,6 +46,7 @@ type CloudBotanist interface {
 	GenerateKubeSchedulerConfig() (map[string]interface{}, error)
 	DeployCloudSpecificControlPlane() error
 	GenerateCSIConfig() (map[string]interface{}, error)
+	MetadataServiceAddress() *net.IPNet
 
 	// Machines
 	GetMachineClassInfo() (string, string, string)

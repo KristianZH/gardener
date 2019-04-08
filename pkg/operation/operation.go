@@ -252,6 +252,12 @@ func (o *Operation) ApplyChartSeed(chartPath, namespace, name string, defaultVal
 	return o.ChartApplierSeed.ApplyChart(context.TODO(), chartPath, namespace, name, defaultValues, additionalValues)
 }
 
+// DeleteChartSeed takes a path to a chart <chartPath>, release's namespace <namespace> and  name of the release <name>,
+// and deletes the template rendered from the Seed cluster.
+func (o *Operation) DeleteChartSeed(chartPath, namespace, name string) error {
+	return o.ChartApplierSeed.DeleteChart(context.TODO(), chartPath, namespace, name)
+}
+
 // GetSecretKeysOfRole returns a list of keys which are present in the Garden Secrets map and which
 // are prefixed with <kind>.
 func (o *Operation) GetSecretKeysOfRole(kind string) []string {

@@ -16,11 +16,24 @@ package gcpbotanist
 
 import (
 	"fmt"
+	"net"
 	"path"
 
 	"github.com/gardener/gardener/pkg/operation/common"
 	"github.com/gardener/gardener/pkg/operation/terraformer"
 )
+
+var (
+	metadataService *net.IPNet
+)
+
+func init() {
+	_, cidr, err := net.ParseCIDR("169.254.169.254/32")
+	if err != nil {
+		panic(err)
+	}
+	metadataService = cidr
+}
 
 const cloudProviderConfigTemplate = `
 [Global]
@@ -110,6 +123,12 @@ func (b *GCPBotanist) GenerateCloudControllerManagerConfig() (map[string]interfa
 // GenerateCSIConfig generates the configuration for CSI charts
 func (b *GCPBotanist) GenerateCSIConfig() (map[string]interface{}, error) {
 	return nil, nil
+}
+
+// MetadataServiceAddress returns GCP's MetadataService address
+func (b *GCPBotanist) MetadataServiceAddress() (*net.IPNet, error) {
+	_, cidr, err := net.ParseCIDR("169.254.169.254/32")
+	return cidr, err
 }
 
 // GenerateKubeControllerManagerConfig generates the cloud provider specific values which are required to

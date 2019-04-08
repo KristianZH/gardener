@@ -440,6 +440,12 @@ func BootstrapCluster(seed *Seed, secrets map[string]*corev1.Secret, imageVector
 			"enabled":        vpaEnabled,
 			"podAnnotations": vpaPodAnnotations,
 		},
+		"global-network-policies": map[string]interface{}{
+			// TODO (mvladev): Move the Provider specific metadata IP
+			// somewhere else, so it's accessible here.
+			// "metadataService": "169.254.169.254/32"
+			"denyAll": false,
+		},
 	}, applierOptions)
 }
 

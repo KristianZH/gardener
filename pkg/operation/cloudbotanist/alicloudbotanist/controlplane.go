@@ -19,12 +19,25 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 
 	"github.com/gardener/gardener/pkg/operation/common"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
+
+var (
+	metadataService *net.IPNet
+)
+
+func init() {
+	_, cidr, err := net.ParseCIDR("100.100.100.200/32")
+	if err != nil {
+		panic(err)
+	}
+	metadataService = cidr
+}
 
 type cloudConfig struct {
 	Global struct {
@@ -117,6 +130,11 @@ func (b *AlicloudBotanist) GenerateCloudControllerManagerConfig() (map[string]in
 	}
 
 	return newConf, chartName, nil
+}
+
+// MetadataServiceAddress returns Aliyun's MetadataService address.
+func (b *AlicloudBotanist) MetadataServiceAddress() *net.IPNet {
+	return metadataService
 }
 
 // GenerateKubeControllerManagerConfig generates the cloud provider specific values which are required to

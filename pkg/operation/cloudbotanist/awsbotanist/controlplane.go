@@ -16,10 +16,23 @@ package awsbotanist
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 
 	"github.com/gardener/gardener/pkg/operation/common"
 )
+
+var (
+	metadataService *net.IPNet
+)
+
+func init() {
+	_, cidr, err := net.ParseCIDR("169.254.169.254/32")
+	if err != nil {
+		panic(err)
+	}
+	metadataService = cidr
+}
 
 const cloudProviderConfigTemplate = `
 [Global]
@@ -125,6 +138,11 @@ func (b *AWSBotanist) GenerateKubeSchedulerConfig() (map[string]interface{}, err
 // GenerateCSIConfig generates the configuration for CSI charts
 func (b *AWSBotanist) GenerateCSIConfig() (map[string]interface{}, error) {
 	return nil, nil
+}
+
+// MetadataServiceAddress returns AWS's MetadataService address.
+func (b *AWSBotanist) MetadataServiceAddress() *net.IPNet {
+	return metadataService
 }
 
 // maps are mutable, so it's safer to create a new instance

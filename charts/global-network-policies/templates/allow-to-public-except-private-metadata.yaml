@@ -1,0 +1,32 @@
+apiVersion: {{ include "networkpolicyversion" . }}
+kind: NetworkPolicy
+metadata:
+  annotations:
+    gardener.cloud/description: |
+      Allows Egress from pods labeled with 'networking.gardener.cloud/to-public-except-private-medatadata=allowed'
+      to all IPs which except for the Private networks (RFC1918), Carrier-grade NAT (RFC 6598) and CloudProvider's
+      specific metadata service IP.
+
+      In practice, this blocks Egress traffic to all networks in the Seed cluster and only traffic to
+      public IPv4 addresses.
+  name: allow-to-public-except-private-and-metadata
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      networking.gardener.cloud/to-public-except-private-medatadata: allowed
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 100.64.0.0/10
+{{- if .Values.metadataService }}
+        - {{ .Values.metadataService }}
+{{- end }}
+  policyTypes:
+  - Egress
+  ingress: []

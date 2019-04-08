@@ -176,6 +176,40 @@ func (b *HybridBotanist) DeployETCD() error {
 	return nil
 }
 
+// DeployNetworkPolicies creates a network policies in a Shoot cluster's namespace that
+// deny all traffic and allow certain components to use annotations to declare their desire
+// to transmit/recieve traffic to/from other Pods/IP addresses.
+func (b *HybridBotanist) DeployNetworkPolicies() error {
+	addr, := b.SeedCloudBotanist.MetadataServiceAddress()
+
+	values := map[string]interface{}{}
+	if addr != nil {
+		values["global-network-policies"] = map[string]interface{}{
+			"metadataService": addr.String(),
+		}
+	}
+	if networks := b.Shoot.GetK8SNetworks(); networks != nil {
+		networkValues := map[string]interface{}{
+			"denyAll": true,
+		}
+
+		if networks.Nodes != nil {
+			networkValues["nodes"] = *networks.Nodes
+		}
+		if networks.Pods != nil {
+			networkValues["pods"] = *networks.Pods
+		}
+		if networks.Services != nil {
+			networkValues["services"] = *networks.Services
+		}
+
+		values["shoot"] = networkValues
+
+	}
+
+	return b.ApplyChartSeed(filepath.Join(chartPathControlPlane, "network-policies"), b.Shoot.SeedNamespace, "network-policies", values, nil)
+}
+
 // DeployCloudProviderConfig asks the Cloud Botanist to provide the cloud specific values for the cloud
 // provider configuration. It will create a ConfigMap for it and store it in the Seed cluster.
 func (b *HybridBotanist) DeployCloudProviderConfig() error {

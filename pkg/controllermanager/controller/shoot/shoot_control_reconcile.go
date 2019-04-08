@@ -81,8 +81,13 @@ func (c *defaultControl) reconcileShoot(o *operation.Operation, operationType ga
 			Fn:   flow.SimpleTaskFn(botanist.DeployNamespace).RetryUntilTimeout(defaultInterval, defaultTimeout),
 		})
 		_ = g.Add(flow.Task{
-			Name:         "Deploying cloud metadata service network policy",
-			Fn:           flow.SimpleTaskFn(botanist.DeployCloudMetadataServiceNetworkPolicy).DoIf(isCloud).RetryUntilTimeout(defaultInterval, defaultTimeout),
+			Name:         "Removing old deprecated network policies",
+			Fn:           flow.SimpleTaskFn(botanist.DeleteDeprecatedCloudMetadataServiceNetworkPolicy).DoIf(isCloud).RetryUntilTimeout(defaultInterval, defaultTimeout),
+			Dependencies: flow.NewTaskIDs(deployNamespace),
+		})
+		_ = g.Add(flow.Task{
+			Name:         "Deploying network policies",
+			Fn:           flow.SimpleTaskFn(hybridBotanist.DeployNetworkPolicies).DoIf(isCloud).RetryUntilTimeout(defaultInterval, defaultTimeout),
 			Dependencies: flow.NewTaskIDs(deployNamespace),
 		})
 		deployCloudProviderSecret = g.Add(flow.Task{

@@ -16,10 +16,23 @@ package openstackbotanist
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/gardener/gardener/pkg/operation/common"
 	"github.com/gardener/gardener/pkg/utils"
 )
+
+var (
+	metadataService *net.IPNet
+)
+
+func init() {
+	_, cidr, err := net.ParseCIDR("169.254.169.254/32")
+	if err != nil {
+		panic(err)
+	}
+	metadataService = cidr
+}
 
 const cloudProviderConfigTemplate = `
 [Global]
@@ -144,6 +157,11 @@ func (b *OpenStackBotanist) GenerateCloudControllerManagerConfig() (map[string]i
 // GenerateCSIConfig generates the configuration for CSI charts
 func (b *OpenStackBotanist) GenerateCSIConfig() (map[string]interface{}, error) {
 	return nil, nil
+}
+
+// MetadataServiceAddress returns OpenStack's MetadataService address.
+func (b *OpenStackBotanist) MetadataServiceAddress() *net.IPNet {
+	return metadataService
 }
 
 // GenerateKubeControllerManagerConfig generates the cloud provider specific values which are required to

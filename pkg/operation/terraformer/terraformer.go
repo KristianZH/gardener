@@ -321,6 +321,11 @@ func (t *Terraformer) deployTerraformerJob(ctx context.Context, scriptName strin
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: t.namespace,
 				Name:      t.jobName,
+				Labels: map[string]string{
+					"networking.gardener.cloud/to-dns":                              "allowed",
+					"networking.gardener.cloud/to-public-except-private-medatadata": "allowed",
+					"networking.gardener.cloud/to-seed-apiserver":                   "allowed",
+				},
 			},
 			Spec: *podSpec,
 		}
