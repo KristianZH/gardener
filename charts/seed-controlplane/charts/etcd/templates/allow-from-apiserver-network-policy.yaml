@@ -25,7 +25,7 @@ spec:
           role: monitoring
     ports:
     - protocol: TCP
-      port: clientport
+      port: {{ .Values.servicePorts.client }}
   policyTypes:
   - Ingress
   egress: []

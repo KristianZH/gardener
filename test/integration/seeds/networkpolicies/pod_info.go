@@ -79,7 +79,6 @@ var (
 			"allow-from-apiserver-to-etcd",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
-			"allow-etcd-main-peering",
 			"deny-all",
 		),
 	}
@@ -95,7 +94,6 @@ var (
 			"allow-from-apiserver-to-etcd",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
-			"allow-etcd-events-peering",
 			"deny-all",
 		),
 	}

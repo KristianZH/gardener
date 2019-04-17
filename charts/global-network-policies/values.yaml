@@ -5,3 +5,11 @@
 # If set to false, only pods labeled with 'networking.gardener.cloud/to-all: disallowed'
 # are denied access.
 denyAll: true
+shoot:
+  nodes: 0.0.0.2/32
+  pods: 0.0.0.3/32
+  services: 0.0.0.4/32
+seed:
+  nodes: 0.0.0.5/32
+  pods: 0.0.0.6/32
+  services: 0.0.0.7/32

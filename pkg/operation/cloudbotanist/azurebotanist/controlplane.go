@@ -178,9 +178,8 @@ func (b *AzureBotanist) GenerateCSIConfig() (map[string]interface{}, error) {
 }
 
 // MetadataServiceAddress returns Azure's MetadataService address
-func (b *AzureBotanist) MetadataServiceAddress() (*net.IPNet, error) {
-	_, cidr, err := net.ParseCIDR("169.254.169.254/32")
-	return cidr, err
+func (b *AzureBotanist) MetadataServiceAddress() *net.IPNet {
+	return metadataService
 }
 
 // GenerateKubeControllerManagerConfig generates the cloud provider specific values which are required to

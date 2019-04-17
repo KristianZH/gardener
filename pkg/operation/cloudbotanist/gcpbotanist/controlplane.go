@@ -126,9 +126,8 @@ func (b *GCPBotanist) GenerateCSIConfig() (map[string]interface{}, error) {
 }
 
 // MetadataServiceAddress returns GCP's MetadataService address
-func (b *GCPBotanist) MetadataServiceAddress() (*net.IPNet, error) {
-	_, cidr, err := net.ParseCIDR("169.254.169.254/32")
-	return cidr, err
+func (b *GCPBotanist) MetadataServiceAddress() *net.IPNet {
+	return metadataService
 }
 
 // GenerateKubeControllerManagerConfig generates the cloud provider specific values which are required to

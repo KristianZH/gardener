@@ -180,7 +180,7 @@ func (b *HybridBotanist) DeployETCD() error {
 // deny all traffic and allow certain components to use annotations to declare their desire
 // to transmit/recieve traffic to/from other Pods/IP addresses.
 func (b *HybridBotanist) DeployNetworkPolicies() error {
-	addr, := b.SeedCloudBotanist.MetadataServiceAddress()
+	addr := b.SeedCloudBotanist.MetadataServiceAddress()
 
 	values := map[string]interface{}{}
 	if addr != nil {
