@@ -3,33 +3,25 @@ kind: NetworkPolicy
 metadata:
   annotations:
     gardener.cloud/description: |
-      Allows Egress from pods labeled with 'networking.gardener.cloud/to-private-except-metadata-and-cluster=allowed'
+      Allows Egress from pods labeled with 'networking.gardener.cloud/to-private-except-metadata-cluster=allowed'
       to the Private networks (RFC1918), Carrier-grade NAT (RFC 6598) except for CloudProvider's specific metadata service IP,
       Seed and Shoot networks.
-  name: allow-to-private-except-metadata-and-cluster
+  name: allow-to-private-except-metadata-cluster
   namespace: {{ .Release.Namespace }}
 spec:
   podSelector:
     matchLabels:
-      networking.gardener.cloud/to-private-except-metadata-and-cluster: allowed
+      networking.gardener.cloud/to-private-except-metadata-cluster: allowed
   egress:
   - to:
+{{- range $i, $network := .Values.privateNetworks }}
     - ipBlock:
-        cidr: 10.0.0.0/8
+        cidr: {{ required ".network.cidr is required" $network.network }}
+{{- if $network.except }}
         except:
-{{ include "global-network-policies.private-networks-except" . | indent 8 }}
-    - ipBlock:
-        cidr: 172.16.0.0/12
-        except:
-{{ include "global-network-policies.private-networks-except" . | indent 8 }}
-    - ipBlock:
-        cidr: 192.168.0.0/16
-        except:
-{{ include "global-network-policies.private-networks-except" . | indent 8 }}
-    - ipBlock:
-        cidr: 100.64.0.0/10
-        except:
-{{ include "global-network-policies.private-networks-except" . | indent 8 }}
+{{ toYaml $network.except | indent 8 }}
+{{- end }}
+{{- end }}
   policyTypes:
   - Egress
   ingress: []

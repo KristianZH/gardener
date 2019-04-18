@@ -49,6 +49,7 @@ spec:
         role: {{ .Values.role }}
         networking.gardener.cloud/to-dns: allowed
         networking.gardener.cloud/to-public-except-private-medatadata: allowed
+        networking.gardener.cloud/to-private-except-metadata-cluster: allowed
     spec:
       priorityClassName: gardener-shoot-controlplane
       containers:

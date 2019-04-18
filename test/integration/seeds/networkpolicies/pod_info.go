@@ -22,6 +22,7 @@ import (
 //Info about pods in Shoot-namespace
 var (
 	KubeAPIServerInfo = &PodInfo{
+		podName:       "kube-apiserver",
 		containerName: "kube-apiserver",
 		port:          443,
 		labels: labels.Set{
@@ -33,11 +34,13 @@ var (
 			"allow-kube-apiserver",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
+			"allow-to-private-except-metadata-cluster",
 			"allow-to-shoot-networks",
 			"deny-all",
 		),
 	}
 	KubeControllerManagerInfo = &PodInfo{
+		podName:       "kube-controller-manager",
 		containerName: "kube-controller-manager",
 		port:          10252,
 		labels: labels.Set{
@@ -53,6 +56,7 @@ var (
 		),
 	}
 	KubeSchedulerInfo = &PodInfo{
+		podName:       "kube-scheduler",
 		containerName: "kube-scheduler",
 		port:          10251,
 		labels: labels.Set{
@@ -68,6 +72,7 @@ var (
 		),
 	}
 	EtcdMainInfo = &PodInfo{
+		podName:       "etcd-main",
 		containerName: "etcd",
 		port:          2379,
 		labels: labels.Set{
@@ -79,10 +84,12 @@ var (
 			"allow-from-apiserver-to-etcd",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
+			"allow-to-private-except-metadata-cluster",
 			"deny-all",
 		),
 	}
 	EtcdEventsInfo = &PodInfo{
+		podName:       "etcd-events",
 		containerName: "etcd",
 		port:          2379,
 		labels: labels.Set{
@@ -94,10 +101,12 @@ var (
 			"allow-from-apiserver-to-etcd",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
+			"allow-to-private-except-metadata-cluster",
 			"deny-all",
 		),
 	}
 	CloudControllerManagerInfo = &PodInfo{
+		podName:       "cloud-controller-manager",
 		containerName: "cloud-controller-manager",
 		port:          10253,
 		labels: labels.Set{
@@ -110,11 +119,13 @@ var (
 			"allow-to-shoot-apiserver",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
+			"allow-to-private-except-metadata-cluster",
 			"allow-to-metadata",
 			"deny-all",
 		),
 	}
 	ElasticSearchInfo = &PodInfo{
+		podName:       "elasticsearch-logging",
 		containerName: "elasticsearch-logging",
 		port:          9200,
 		labels: labels.Set{
@@ -128,6 +139,7 @@ var (
 		),
 	}
 	GrafanaInfo = &PodInfo{
+		podName:       "grafana",
 		containerName: "grafana",
 		port:          3000,
 		labels: labels.Set{
@@ -141,6 +153,7 @@ var (
 		),
 	}
 	KibanaInfo = &PodInfo{
+		podName:       "kibana-logging",
 		containerName: "kibana-logging",
 		port:          5601,
 		labels: labels.Set{
@@ -156,6 +169,7 @@ var (
 		),
 	}
 	KubeStateMetricsSeedInfo = &PodInfo{
+		podName:       "kube-state-metrics-seed",
 		containerName: "kube-state-metrics",
 		port:          8080,
 		labels: labels.Set{
@@ -171,6 +185,7 @@ var (
 		),
 	}
 	KubeStateMetricsShootInfo = &PodInfo{
+		podName:       "kube-state-metrics-shoot",
 		containerName: "kube-state-metrics",
 		port:          8080,
 		labels: labels.Set{
@@ -186,6 +201,7 @@ var (
 		),
 	}
 	MachineControllerManagerInfo = &PodInfo{
+		podName:       "machine-controller-manager",
 		containerName: "machine-controller-manager",
 		port:          10258,
 		labels: labels.Set{
@@ -197,12 +213,14 @@ var (
 			"allow-from-prometheus",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
+			"allow-to-private-except-metadata-cluster",
 			"allow-to-seed-apiserver",
 			"allow-to-shoot-apiserver",
 			"deny-all",
 		),
 	}
 	PrometheusInfo = &PodInfo{
+		podName:       "prometheus",
 		containerName: "prometheus",
 		port:          9090,
 		labels: labels.Set{
@@ -221,6 +239,7 @@ var (
 		),
 	}
 	BusyboxInfo = &PodInfo{
+		podName:       "busybox",
 		containerName: "busybox",
 		port:          8080,
 		labels: labels.Set{
@@ -232,6 +251,7 @@ var (
 
 // PodInfo holds the data about pods in the shoot namespace and their services.
 type PodInfo struct {
+	podName          string
 	containerName    string
 	port             int32
 	portName         string

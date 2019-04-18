@@ -182,30 +182,43 @@ func (b *HybridBotanist) DeployETCD() error {
 func (b *HybridBotanist) DeployNetworkPolicies() error {
 	addr := b.SeedCloudBotanist.MetadataServiceAddress()
 
+	seedNetworks := b.Seed.Info.Spec.Networks
+	allCIDRNetworks := []gardencorev1alpha1.CIDR{seedNetworks.Nodes, seedNetworks.Pods, seedNetworks.Services}
+
 	values := map[string]interface{}{}
-	if addr != nil {
-		values["global-network-policies"] = map[string]interface{}{
-			"metadataService": addr.String(),
-		}
-	}
 	if networks := b.Shoot.GetK8SNetworks(); networks != nil {
 		networkValues := map[string]interface{}{
 			"denyAll": true,
 		}
-
 		if networks.Nodes != nil {
 			networkValues["nodes"] = *networks.Nodes
+			allCIDRNetworks = append(allCIDRNetworks, *networks.Nodes)
 		}
 		if networks.Pods != nil {
 			networkValues["pods"] = *networks.Pods
+			allCIDRNetworks = append(allCIDRNetworks, *networks.Pods)
 		}
 		if networks.Services != nil {
 			networkValues["services"] = *networks.Services
+			allCIDRNetworks = append(allCIDRNetworks, *networks.Services)
 		}
 
 		values["shoot"] = networkValues
-
 	}
+
+	globalNetworkPoliciesValues := map[string]interface{}{}
+
+	if addr != nil {
+		allCIDRNetworks = append(allCIDRNetworks, gardencorev1alpha1.CIDR(addr.String()))
+		globalNetworkPoliciesValues["metadataService"] = addr.String()
+	}
+
+	privateNetworks, err := common.ToExceptNetworks(allCIDRNetworks...)
+	if err != nil {
+		return err
+	}
+	globalNetworkPoliciesValues["privateNetworks"] = privateNetworks
+	values["global-network-policies"] = globalNetworkPoliciesValues
 
 	return b.ApplyChartSeed(filepath.Join(chartPathControlPlane, "network-policies"), b.Shoot.SeedNamespace, "network-policies", values, nil)
 }

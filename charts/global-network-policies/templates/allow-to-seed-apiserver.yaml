@@ -19,11 +19,24 @@ spec:
     #     cidr: 1.2.3.4/32
     # TODO (mvladev): We can't be 100% sure what IP the Seed API server might have.
     # In some cases it might be in the private IP range.
+  - to:
     - ipBlock:
         cidr: 0.0.0.0/0
-{{- if .Values.metadataService }}
         except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 100.64.0.0/10
+{{- if .Values.metadataService }}
         - {{ .Values.metadataService }}
+{{- end }}
+{{- range $i, $network := .Values.privateNetworks }}
+    - ipBlock:
+        cidr: {{ required ".network.cidr is required" $network.network }}
+{{- if $network.except }}
+        except:
+{{ toYaml $network.except | indent 8 }}
+{{- end }}
 {{- end }}
   # TODO (mvladev): discover ports on every Seed cluster dynamically.
   # ports:
