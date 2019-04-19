@@ -430,19 +430,21 @@ var _ = Describe("Network Policy Testing", func() {
 		var (
 			NetworkPolicyTimeout = 30 * time.Second
 
-			assertConnectivity = func(sourcePod *PodInfo, targetPod *PodInfo) func(ctx context.Context) {
+			sourcePod *PodInfo
+
+			assertConnectivity = func(targetPod *PodInfo) func(ctx context.Context) {
 				return func(ctx context.Context) {
 					assertCanConnect(ctx, NewNamespacedPodInfo(sourcePod, sharedResources.Mirror), NewNamespacedPodInfo(targetPod, sharedResources.Mirror))
 				}
 			}
 
-			assertThereIsNoConnectivity = func(sourcePod *PodInfo, targetPod *PodInfo) func(ctx context.Context) {
+			assertThereIsNoConnectivity = func(targetPod *PodInfo) func(ctx context.Context) {
 				return func(ctx context.Context) {
 					assertCannotConnect(ctx, NewNamespacedPodInfo(sourcePod, sharedResources.Mirror), NewNamespacedPodInfo(targetPod, sharedResources.Mirror))
 				}
 			}
 
-			assertCannotConnectToMetadataService = func(sourcePod *PodInfo) func(ctx context.Context) {
+			assertCannotConnectToMetadataService = func() func(ctx context.Context) {
 				return func(ctx context.Context) {
 					var host string
 					if cloudProvider == v1beta1.CloudProviderAlicloud {
@@ -454,7 +456,7 @@ var _ = Describe("Network Policy Testing", func() {
 				}
 			}
 
-			assertCanConnectToMetadataService = func(sourcePod *PodInfo) func(ctx context.Context) {
+			assertCanConnectToMetadataService = func() func(ctx context.Context) {
 				return func(ctx context.Context) {
 					var host string
 					if cloudProvider == v1beta1.CloudProviderAlicloud {
@@ -469,242 +471,294 @@ var _ = Describe("Network Policy Testing", func() {
 
 		Context("kube-apiserver", func() {
 
-			CIt("should connect to etcd-main", assertConnectivity(KubeAPIServerInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should connect to etcd-events", assertConnectivity(KubeAPIServerInfo, EtcdEventsInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = KubeAPIServerInfo
+			})
+
+			CIt("should connect to etcd-main", assertConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should connect to etcd-events", assertConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
 			CIt("should connect to external sources", func(ctx context.Context) {
 				assertCanConnectToHost(ctx, NewNamespacedPodInfo(KubeAPIServerInfo, sharedResources.Mirror), "kubernetes.default", 443)
 			}, NetworkPolicyTimeout)
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("etcd-main", func() {
 
-			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(EtcdMainInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdMainInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(EtcdMainInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(EtcdMainInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(EtcdMainInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(EtcdMainInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(EtcdMainInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(EtcdMainInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(EtcdMainInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(EtcdMainInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(EtcdMainInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(EtcdMainInfo, PrometheusInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = EtcdMainInfo
+			})
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("etcd-events", func() {
 
-			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(EtcdEventsInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(EtcdEventsInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(EtcdEventsInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(EtcdEventsInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(EtcdEventsInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(EtcdEventsInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(EtcdEventsInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(EtcdEventsInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(EtcdEventsInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(EtcdEventsInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(EtcdEventsInfo, PrometheusInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = EtcdEventsInfo
+			})
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("cloud-controller-manager", func() {
 
-			CIt("should connect to kube-apiserver", assertConnectivity(KubeControllerManagerInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = CloudControllerManagerInfo
+			})
 
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(CloudControllerManagerInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(CloudControllerManagerInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(CloudControllerManagerInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(CloudControllerManagerInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(CloudControllerManagerInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(CloudControllerManagerInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(CloudControllerManagerInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(CloudControllerManagerInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(CloudControllerManagerInfo, PrometheusInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-apiserver", assertConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
 
-			CIt("should connect to metadataService", assertCanConnectToMetadataService(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should connect to metadataService", assertCanConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("elasticsearch", func() {
 
-			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(ElasticSearchInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(ElasticSearchInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(ElasticSearchInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(ElasticSearchInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(ElasticSearchInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(ElasticSearchInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(ElasticSearchInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(ElasticSearchInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(ElasticSearchInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(ElasticSearchInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(ElasticSearchInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(ElasticSearchInfo, PrometheusInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = ElasticSearchInfo
+			})
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("grafana", func() {
 
-			CIt("should connect to prometheus", assertConnectivity(GrafanaInfo, PrometheusInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = ElasticSearchInfo
+			})
 
-			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(GrafanaInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(GrafanaInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(GrafanaInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(GrafanaInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch", assertThereIsNoConnectivity(GrafanaInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(GrafanaInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(GrafanaInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(GrafanaInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(GrafanaInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(GrafanaInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(GrafanaInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should connect to prometheus", assertConnectivity(PrometheusInfo), NetworkPolicyTimeout)
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("kibana", func() {
 
-			CIt("should connect to elasticsearch", assertConnectivity(KibanaInfo, ElasticSearchInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = KibanaInfo
+			})
 
-			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KibanaInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(KibanaInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(KibanaInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(KibanaInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(KibanaInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KibanaInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KibanaInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KibanaInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KibanaInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(KibanaInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(KibanaInfo, PrometheusInfo), NetworkPolicyTimeout)
+			CIt("should connect to elasticsearch", assertConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("kube-controller-manager", func() {
 
-			CIt("should connect to kube-apiserver", assertConnectivity(KubeControllerManagerInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = KubeControllerManagerInfo
+			})
 
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(KubeControllerManagerInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(KubeControllerManagerInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(KubeControllerManagerInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch", assertThereIsNoConnectivity(KubeControllerManagerInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana", assertThereIsNoConnectivity(KubeControllerManagerInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeControllerManagerInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeControllerManagerInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeControllerManagerInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(KubeControllerManagerInfo, PrometheusInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-apiserver", assertConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
 
 			if cloudProvider == v1beta1.CloudProviderAlicloud {
-				CIt("should block connection to metadataService", assertCannotConnectToMetadataService(KubeControllerManagerInfo), NetworkPolicyTimeout)
+				CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 			} else {
-				CIt("should connect to metadataService", assertCanConnectToMetadataService(KubeControllerManagerInfo), NetworkPolicyTimeout)
+				CIt("should connect to metadataService", assertCanConnectToMetadataService(), NetworkPolicyTimeout)
 			}
 
 		})
 
 		Context("kube-scheduler", func() {
 
-			CIt("should connect to kube-apiserver", assertConnectivity(KubeSchedulerInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = KubeSchedulerInfo
+			})
 
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(KubeSchedulerInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(KubeSchedulerInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(KubeSchedulerInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(KubeSchedulerInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(KubeSchedulerInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KubeSchedulerInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeSchedulerInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeSchedulerInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeSchedulerInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(KubeSchedulerInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(KubeSchedulerInfo, PrometheusInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-apiserver", assertConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("kube-state-metrics-shoot", func() {
 
-			CIt("should connect to kube-apiserver", assertConnectivity(KubeStateMetricsShootInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = KubeStateMetricsShootInfo
+			})
 
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(KubeStateMetricsShootInfo, PrometheusInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-apiserver", assertConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("kube-state-metrics-seed", func() {
 
-			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo, PrometheusInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = KubeStateMetricsSeedInfo
+			})
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-apiserver", assertThereIsNoConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to machine-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("machine-controller-manager", func() {
 
-			CIt("should connect to kube-apiserver", assertConnectivity(MachineControllerManagerInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = MachineControllerManagerInfo
+			})
 
-			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(MachineControllerManagerInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(MachineControllerManagerInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(MachineControllerManagerInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(MachineControllerManagerInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(MachineControllerManagerInfo, KibanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(MachineControllerManagerInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(MachineControllerManagerInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(MachineControllerManagerInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(MachineControllerManagerInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(MachineControllerManagerInfo, PrometheusInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-apiserver", assertConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(MachineControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-main", assertThereIsNoConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to etcd-events", assertThereIsNoConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to cloud-controller-manager", assertThereIsNoConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-controller-manager", assertThereIsNoConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-scheduler", assertThereIsNoConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-shoot", assertThereIsNoConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kube-state-metrics-seed", assertThereIsNoConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to prometheus", assertThereIsNoConnectivity(PrometheusInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 		Context("prometheus", func() {
 
-			CIt("should connect to kube-apiserver", assertConnectivity(PrometheusInfo, KubeAPIServerInfo), NetworkPolicyTimeout)
-			CIt("should connect to etcd-main", assertConnectivity(PrometheusInfo, EtcdMainInfo), NetworkPolicyTimeout)
-			CIt("should connect to etcd-events", assertConnectivity(PrometheusInfo, EtcdEventsInfo), NetworkPolicyTimeout)
-			CIt("should connect to cloud-controller-manager", assertConnectivity(PrometheusInfo, CloudControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should connect to kube-controller-manager", assertConnectivity(PrometheusInfo, KubeControllerManagerInfo), NetworkPolicyTimeout)
-			CIt("should connect to kube-scheduler", assertConnectivity(PrometheusInfo, KubeSchedulerInfo), NetworkPolicyTimeout)
-			CIt("should connect to kube-state-metrics-shoot", assertConnectivity(PrometheusInfo, KubeStateMetricsShootInfo), NetworkPolicyTimeout)
-			CIt("should connect to kube-state-metrics-seed", assertConnectivity(PrometheusInfo, KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
-			CIt("should connect to machine-controller-manager", assertConnectivity(PrometheusInfo, MachineControllerManagerInfo), NetworkPolicyTimeout)
+			BeforeEach(func() {
+				sourcePod = PrometheusInfo
+			})
 
-			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(PrometheusInfo, ElasticSearchInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(PrometheusInfo, GrafanaInfo), NetworkPolicyTimeout)
-			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(PrometheusInfo, KibanaInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-apiserver", assertConnectivity(KubeAPIServerInfo), NetworkPolicyTimeout)
+			CIt("should connect to etcd-main", assertConnectivity(EtcdMainInfo), NetworkPolicyTimeout)
+			CIt("should connect to etcd-events", assertConnectivity(EtcdEventsInfo), NetworkPolicyTimeout)
+			CIt("should connect to cloud-controller-manager", assertConnectivity(CloudControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-controller-manager", assertConnectivity(KubeControllerManagerInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-scheduler", assertConnectivity(KubeSchedulerInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-state-metrics-shoot", assertConnectivity(KubeStateMetricsShootInfo), NetworkPolicyTimeout)
+			CIt("should connect to kube-state-metrics-seed", assertConnectivity(KubeStateMetricsSeedInfo), NetworkPolicyTimeout)
+			CIt("should connect to machine-controller-manager", assertConnectivity(MachineControllerManagerInfo), NetworkPolicyTimeout)
 
-			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(PrometheusInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to elasticsearch-logging", assertThereIsNoConnectivity(ElasticSearchInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to grafana", assertThereIsNoConnectivity(GrafanaInfo), NetworkPolicyTimeout)
+			CIt("should block connectivity to kibana-logging", assertThereIsNoConnectivity(KibanaInfo), NetworkPolicyTimeout)
+
+			CIt("should block connection to metadataService", assertCannotConnectToMetadataService(), NetworkPolicyTimeout)
 		})
 
 	})
