@@ -4,7 +4,7 @@ metadata:
   annotations:
     gardener.cloud/description: |
       Allows Ingress to etcd pods from the Shoot's Kubernetes API Server.
-  name: allow-from-apiserver-to-etcd
+  name: allow-etcd
   namespace: {{ .Release.Namespace }}
 spec:
   podSelector:

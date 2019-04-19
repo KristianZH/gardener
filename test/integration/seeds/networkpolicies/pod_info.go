@@ -15,9 +15,25 @@
 package networkpolicies
 
 import (
+	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
+
+// PodInfo holds the data about pods in the shoot namespace and their services.
+type PodInfo struct {
+	podName          string
+	containerName    string
+	port             int32
+	portName         string
+	labels           labels.Set
+	expectedPolicies sets.String
+}
+
+// Selector returns label selector for specific pod.
+func (p *PodInfo) Selector() labels.Selector {
+	return labels.SelectorFromSet(p.labels)
+}
 
 //Info about pods in Shoot-namespace
 var (
@@ -81,7 +97,7 @@ var (
 			"role":                    "main",
 		},
 		expectedPolicies: sets.NewString(
-			"allow-from-apiserver-to-etcd",
+			"allow-etcd",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
 			"allow-to-private-except-metadata-cluster",
@@ -98,7 +114,7 @@ var (
 			"role":                    "events",
 		},
 		expectedPolicies: sets.NewString(
-			"allow-from-apiserver-to-etcd",
+			"allow-etcd",
 			"allow-to-dns",
 			"allow-to-public-except-private-and-metadata",
 			"allow-to-private-except-metadata-cluster",
@@ -238,6 +254,22 @@ var (
 			"deny-all",
 		),
 	}
+	AddonManagerInfo = &PodInfo{
+		podName:       "kube-addon-manager",
+		containerName: "kube-addon-manager",
+		// TODO it actually does nothing
+		port: 9090,
+		labels: labels.Set{
+			"app":                     "kubernetes",
+			"garden.sapcloud.io/role": "controlplane",
+			"role":                    "addon-manager",
+		},
+		expectedPolicies: sets.NewString(
+			"allow-to-dns",
+			"allow-to-shoot-apiserver",
+			"deny-all",
+		),
+	}
 	BusyboxInfo = &PodInfo{
 		podName:       "busybox",
 		containerName: "busybox",
@@ -249,37 +281,54 @@ var (
 	}
 )
 
-// PodInfo holds the data about pods in the shoot namespace and their services.
-type PodInfo struct {
-	podName          string
-	containerName    string
-	port             int32
-	portName         string
-	labels           labels.Set
-	expectedPolicies sets.String
+type CloudAwarePodInfo struct {
+	provider v1beta1.CloudProvider
 }
 
 // Selector returns label selector for specific pod.
-func (p *PodInfo) Selector() labels.Selector {
-	return labels.SelectorFromSet(p.labels)
+func (c *CloudAwarePodInfo) KubeControllerManager() *PodInfo {
+
+	if c.provider != v1beta1.CloudProviderAlicloud {
+		return &PodInfo{
+			podName:       "kube-controller-manager",
+			containerName: "kube-controller-manager",
+			port:          10252,
+			labels: labels.Set{
+				"app":                     "kubernetes",
+				"garden.sapcloud.io/role": "controlplane",
+				"role":                    "controller-manager",
+			},
+			expectedPolicies: sets.NewString(
+				"allow-to-public-except-private-and-metadata",
+				"allow-to-private-except-metadata-cluster",
+				"allow-from-prometheus",
+				"allow-to-dns",
+				"allow-to-metadata",
+				"allow-to-shoot-apiserver",
+				"deny-all",
+			),
+		}
+	}
+	return KubeControllerManagerInfo
 }
 
 // ListPodsInfo return slice with info for all pods.
-func ListPodsInfo() []PodInfo {
-	return []PodInfo{
-		*KubeAPIServerInfo,
-		*KubeControllerManagerInfo,
-		*KubeSchedulerInfo,
-		*EtcdMainInfo,
-		*EtcdEventsInfo,
-		*CloudControllerManagerInfo,
-		*ElasticSearchInfo,
-		*GrafanaInfo,
-		*KibanaInfo,
-		*KubeStateMetricsSeedInfo,
-		*KubeStateMetricsShootInfo,
-		*MachineControllerManagerInfo,
-		*PrometheusInfo,
+func ListPodsInfo() []*PodInfo {
+	return []*PodInfo{
+		KubeAPIServerInfo,
+		KubeControllerManagerInfo,
+		KubeSchedulerInfo,
+		EtcdMainInfo,
+		EtcdEventsInfo,
+		CloudControllerManagerInfo,
+		ElasticSearchInfo,
+		GrafanaInfo,
+		KibanaInfo,
+		KubeStateMetricsSeedInfo,
+		KubeStateMetricsShootInfo,
+		MachineControllerManagerInfo,
+		PrometheusInfo,
+		AddonManagerInfo,
 	}
 }
 

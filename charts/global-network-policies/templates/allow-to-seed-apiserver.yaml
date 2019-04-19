@@ -12,9 +12,9 @@ spec:
     matchLabels:
       networking.gardener.cloud/to-seed-apiserver: allowed
   egress:
-  - to:
     # TODO (mvladev): write a controller which reconciles this policy with
     # the IP of the 'kubernetes' endpoint in 'default' namespace in the Seed cluster.
+    # - to:
     # - ipBlock:
     #     cidr: 1.2.3.4/32
     # TODO (mvladev): We can't be 100% sure what IP the Seed API server might have.

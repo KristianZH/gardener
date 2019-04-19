@@ -1,6 +1,6 @@
 #!/bin/sh
 
-ginkgo -progress -v -nodes=25 . -- \
+ginkgo -progress -v -noColor -nodes=25 . -- \
         -kubeconfig $HOME/.kube/config \
         -shootName "shoot" \
         -shootNamespace "garden-i355448"
@@ -12,3 +12,8 @@ ginkgo -progress -v -nodes=25 . -- \
 #         -ginkgo.parallel.node 5 \
 #         -ginkgo.parallel.total 5
 # #        -ginkgo.focus="Cloud-controller-manager"
+
+# ginkgo -progress -v . -- \
+#         -kubeconfig $HOME/.kube/config \
+#         -shootName "shoot" \
+#         -shootNamespace "garden-i355448"

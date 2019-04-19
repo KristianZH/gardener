@@ -398,6 +398,20 @@ func (o *GardenerTestOperation) GetFirstNodeInternalIP(ctx context.Context) (str
 	return "", ErrNoInternalIPsForNodeWasFound
 }
 
+// GetCoreDNSPodIP gets the CoreDNS IP
+func (o *GardenerTestOperation) GetCoreDNSPodIP(ctx context.Context) (string, error) {
+	coreDNSLabels := labels.SelectorFromSet(labels.Set(map[string]string{
+		"k8s-app": "kube-dns",
+	}))
+
+	coreDNS, err := o.GetFirstRunningPodWithLabels(ctx, coreDNSLabels, metav1.NamespaceSystem, o.ShootClient)
+	if err != nil {
+		return "", err
+	}
+
+	return coreDNS.Status.PodIP, nil
+}
+
 // GetDashboardPodIP gets the dashboard IP
 func (o *GardenerTestOperation) GetDashboardPodIP(ctx context.Context) (string, error) {
 	dashboardLabels := labels.SelectorFromSet(labels.Set(map[string]string{

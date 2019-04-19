@@ -19,6 +19,10 @@ spec:
           networking.gardener.cloud/from-prometheus: allowed
     - podSelector:
         matchLabels:
+          app: etcd-statefulset
+          garden.sapcloud.io/role: controlplane
+    - podSelector:
+        matchLabels:
           app: prometheus
           role: monitoring
       namespaceSelector:
