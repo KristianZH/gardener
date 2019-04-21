@@ -23,7 +23,6 @@ import (
 // PodInfo holds the data about pods in the shoot namespace and their services.
 type PodInfo struct {
 	podName          string
-	containerName    string
 	port             int32
 	portName         string
 	labels           labels.Set
@@ -38,9 +37,8 @@ func (p *PodInfo) Selector() labels.Selector {
 //Info about pods in Shoot-namespace
 var (
 	KubeAPIServerInfo = &PodInfo{
-		podName:       "kube-apiserver",
-		containerName: "kube-apiserver",
-		port:          443,
+		podName: "kube-apiserver",
+		port:    443,
 		labels: labels.Set{
 			"app":  "kubernetes",
 			"role": "apiserver",
@@ -56,9 +54,8 @@ var (
 		),
 	}
 	KubeControllerManagerInfo = &PodInfo{
-		podName:       "kube-controller-manager",
-		containerName: "kube-controller-manager",
-		port:          10252,
+		podName: "kube-controller-manager",
+		port:    10252,
 		labels: labels.Set{
 			"app":                     "kubernetes",
 			"garden.sapcloud.io/role": "controlplane",
@@ -72,9 +69,8 @@ var (
 		),
 	}
 	KubeSchedulerInfo = &PodInfo{
-		podName:       "kube-scheduler",
-		containerName: "kube-scheduler",
-		port:          10251,
+		podName: "kube-scheduler",
+		port:    10251,
 		labels: labels.Set{
 			"app":                     "kubernetes",
 			"garden.sapcloud.io/role": "controlplane",
@@ -88,9 +84,8 @@ var (
 		),
 	}
 	EtcdMainInfo = &PodInfo{
-		podName:       "etcd-main",
-		containerName: "etcd",
-		port:          2379,
+		podName: "etcd-main",
+		port:    2379,
 		labels: labels.Set{
 			"app":                     "etcd-statefulset",
 			"garden.sapcloud.io/role": "controlplane",
@@ -105,9 +100,8 @@ var (
 		),
 	}
 	EtcdEventsInfo = &PodInfo{
-		podName:       "etcd-events",
-		containerName: "etcd",
-		port:          2379,
+		podName: "etcd-events",
+		port:    2379,
 		labels: labels.Set{
 			"app":                     "etcd-statefulset",
 			"garden.sapcloud.io/role": "controlplane",
@@ -122,9 +116,8 @@ var (
 		),
 	}
 	CloudControllerManagerInfo = &PodInfo{
-		podName:       "cloud-controller-manager",
-		containerName: "cloud-controller-manager",
-		port:          10253,
+		podName: "cloud-controller-manager",
+		port:    10253,
 		labels: labels.Set{
 			"app":                     "kubernetes",
 			"garden.sapcloud.io/role": "controlplane",
@@ -141,9 +134,8 @@ var (
 		),
 	}
 	ElasticSearchInfo = &PodInfo{
-		podName:       "elasticsearch-logging",
-		containerName: "elasticsearch-logging",
-		port:          9200,
+		podName: "elasticsearch-logging",
+		port:    9200,
 		labels: labels.Set{
 			"app":                     "elasticsearch-logging",
 			"garden.sapcloud.io/role": "logging",
@@ -155,9 +147,8 @@ var (
 		),
 	}
 	GrafanaInfo = &PodInfo{
-		podName:       "grafana",
-		containerName: "grafana",
-		port:          3000,
+		podName: "grafana",
+		port:    3000,
 		labels: labels.Set{
 			"component":               "grafana",
 			"garden.sapcloud.io/role": "monitoring",
@@ -169,9 +160,8 @@ var (
 		),
 	}
 	KibanaInfo = &PodInfo{
-		podName:       "kibana-logging",
-		containerName: "kibana-logging",
-		port:          5601,
+		podName: "kibana-logging",
+		port:    5601,
 		labels: labels.Set{
 			"app":                     "kibana-logging",
 			"garden.sapcloud.io/role": "logging",
@@ -185,9 +175,8 @@ var (
 		),
 	}
 	KubeStateMetricsSeedInfo = &PodInfo{
-		podName:       "kube-state-metrics-seed",
-		containerName: "kube-state-metrics",
-		port:          8080,
+		podName: "kube-state-metrics-seed",
+		port:    8080,
 		labels: labels.Set{
 			"component":               "kube-state-metrics",
 			"garden.sapcloud.io/role": "monitoring",
@@ -201,9 +190,8 @@ var (
 		),
 	}
 	KubeStateMetricsShootInfo = &PodInfo{
-		podName:       "kube-state-metrics-shoot",
-		containerName: "kube-state-metrics",
-		port:          8080,
+		podName: "kube-state-metrics-shoot",
+		port:    8080,
 		labels: labels.Set{
 			"component":               "kube-state-metrics",
 			"garden.sapcloud.io/role": "monitoring",
@@ -217,9 +205,8 @@ var (
 		),
 	}
 	MachineControllerManagerInfo = &PodInfo{
-		podName:       "machine-controller-manager",
-		containerName: "machine-controller-manager",
-		port:          10258,
+		podName: "machine-controller-manager",
+		port:    10258,
 		labels: labels.Set{
 			"app":                     "kubernetes",
 			"garden.sapcloud.io/role": "controlplane",
@@ -236,9 +223,8 @@ var (
 		),
 	}
 	PrometheusInfo = &PodInfo{
-		podName:       "prometheus",
-		containerName: "prometheus",
-		port:          9090,
+		podName: "prometheus",
+		port:    9090,
 		labels: labels.Set{
 			"app":                     "prometheus",
 			"garden.sapcloud.io/role": "monitoring",
@@ -255,8 +241,7 @@ var (
 		),
 	}
 	AddonManagerInfo = &PodInfo{
-		podName:       "kube-addon-manager",
-		containerName: "kube-addon-manager",
+		podName: "kube-addon-manager",
 		// TODO it actually does nothing
 		port: 9090,
 		labels: labels.Set{
@@ -271,9 +256,8 @@ var (
 		),
 	}
 	BusyboxInfo = &PodInfo{
-		podName:       "busybox",
-		containerName: "busybox",
-		port:          8080,
+		podName: "busybox",
+		port:    8080,
 		labels: labels.Set{
 			"app":  "busybox",
 			"role": "testing",
@@ -290,9 +274,8 @@ func (c *CloudAwarePodInfo) KubeControllerManager() *PodInfo {
 
 	if c.provider != v1beta1.CloudProviderAlicloud {
 		return &PodInfo{
-			podName:       "kube-controller-manager",
-			containerName: "kube-controller-manager",
-			port:          10252,
+			podName: "kube-controller-manager",
+			port:    10252,
 			labels: labels.Set{
 				"app":                     "kubernetes",
 				"garden.sapcloud.io/role": "controlplane",

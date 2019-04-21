@@ -29,7 +29,6 @@ type Hosts struct {
 	Description string
 	HostName    string
 	Port        int32
-	ShouldAllow bool
 }
 
 type Source struct {
@@ -73,5 +72,5 @@ func (s *Source) ToHosts(cp v1beta1.CloudProvider) []Hosts {
 		metadataHost = "169.254.169.254"
 	}
 
-	return []Hosts{{"Metadata Service", metadataHost, metadataPort, s.Pod.expectedPolicies.Has("allow-to-metadata")}}
+	return []Hosts{{"Metadata Service", metadataHost, metadataPort}}
 }
