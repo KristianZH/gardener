@@ -14,15 +14,15 @@
 
 package networkpolicies
 
-// import (
-// 	. "github.com/onsi/ginkgo"
-// 	. "github.com/onsi/gomega"
-// )
+import (
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+)
 
-// var _ = Describe("AWS test", func() {
+var _ = Describe("AWS test", func() {
 
-// 	It("should work", func() {
-// 		pi := AWSPodInfo{}
-// 		Expect(pi.ToSources()).ShouldNot(BeNil())
-// 	})
-// })
+	It("should work", func() {
+		pi := AWSPodInfo{}
+		Expect(pi.ToSources()).Should(BeNil())
+	})
+})

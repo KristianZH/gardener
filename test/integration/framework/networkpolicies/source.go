@@ -32,93 +32,87 @@ type Source struct {
 }
 
 type SourceBuilder struct {
-	source          Source
-	denyPodTargets  []PodInfo
-	denyHostTargets []Host
+	source Source
 }
 
-func NewSource(pi *PodInfo, denyPodTargets []PodInfo, denyHostTargets []Host) *SourceBuilder {
-	return &SourceBuilder{source: Source{Pod: pi}, denyPodTargets: denyPodTargets, denyHostTargets: denyHostTargets}
+func NewSource(pi *PodInfo) *SourceBuilder {
+	return &SourceBuilder{source: Source{Pod: pi}}
 }
 
 func (s *SourceBuilder) AllowHost(allowedHosts ...*Host) *SourceBuilder {
-	for _, allowedHost := range allowedHosts {
-		s.source.Targets = append(s.source.Targets, Target{Host: allowedHost, Allowed: true})
-	}
-	return s
+	return s.conditionalHost(true, allowedHosts...)
 }
 
 func (s *SourceBuilder) AllowTo(description, hostname string, port int32) *SourceBuilder {
-	s.source.Targets = append(s.source.Targets, Target{Host: &Host{description, hostname, port}, Allowed: true})
-	return s
+	return s.conditionalHost(true, &Host{Description: description, HostName: hostname, Port: port})
 }
 
 func (s *SourceBuilder) AllowPod(allowedPods ...*PodInfo) *SourceBuilder {
-	for _, allowedPod := range allowedPods {
+	return s.conditionalPod(true, allowedPods...)
+}
 
-		for i := 0; i < len(s.source.Targets); i++ {
-			existingTarget := s.source.Targets[i]
+func (s *SourceBuilder) DenyHost(deniedHosts ...*Host) *SourceBuilder {
+	return s.conditionalHost(false, deniedHosts...)
+}
 
-			if allowedPod.PodName == existingTarget.Pod.PodName && allowedPod.Port == existingTarget.Pod.Port {
-				s.source.Targets[i] = Target{Pod: allowedPod, Allowed: true}
+func (s *SourceBuilder) DenyPod(deniedPods ...*PodInfo) *SourceBuilder {
+	return s.conditionalPod(false, deniedPods...)
+}
+
+func (s *SourceBuilder) DenyTo(description, hostname string, port int32) *SourceBuilder {
+	return s.conditionalHost(false, &Host{Description: description, HostName: hostname, Port: port})
+}
+
+// func (s *SourceBuilder) SkipPod(skippedPods ...*PodInfo) *SourceBuilder {
+// 	for _, skippedPod := range skippedPods {
+// 		for i := 0; i < len(s.denyPodTargets); i++ {
+// 			if s.denyPodTargets[i].PodName == skippedPod.PodName {
+// 				s.denyPodTargets = append(s.denyPodTargets[:i], s.denyPodTargets[i+1:]...)
+// 				i--
+// 			}
+// 		}
+// 	}
+// 	return s
+// }
+
+func (s *SourceBuilder) conditionalPod(allowed bool, pods ...*PodInfo) *SourceBuilder {
+	for _, pod := range pods {
+		found := false
+		for i, existingTarget := range s.source.Targets {
+
+			if existingTarget.Pod != nil && pod.PodName == existingTarget.Pod.PodName && pod.Port == existingTarget.Pod.Port {
+				s.source.Targets[i] = Target{Pod: pod, Allowed: allowed}
+				found = true
 				break
 			}
 
-			s.source.Targets = append(s.source.Targets, Target{Pod: allowedPod, Allowed: true})
 		}
-	}
-	for _, allowedPod := range allowedPods {
-		s.source.Targets = append(s.source.Targets, Target{Pod: allowedPod, Allowed: true})
+		if !found {
+			s.source.Targets = append(s.source.Targets, Target{Pod: pod, Allowed: allowed})
+		}
 	}
 	return s
 }
 
-func (s *SourceBuilder) SkipPod(skippedPods ...*PodInfo) *SourceBuilder {
-	for _, skippedPod := range skippedPods {
-		for i := 0; i < len(s.denyPodTargets); i++ {
-			if s.denyPodTargets[i].PodName == skippedPod.PodName {
-				s.denyPodTargets = append(s.denyPodTargets[:i], s.denyPodTargets[i+1:]...)
-				i--
+func (s *SourceBuilder) conditionalHost(allowed bool, hosts ...*Host) *SourceBuilder {
+	for _, host := range hosts {
+		found := false
+		for i, existingTarget := range s.source.Targets {
+
+			if existingTarget.Host != nil && host.HostName == existingTarget.Host.HostName && host.Port == existingTarget.Host.Port {
+				s.source.Targets[i] = Target{Host: host, Allowed: allowed}
+				found = true
+				break
 			}
+
+		}
+		if !found {
+			s.source.Targets = append(s.source.Targets, Target{Host: host, Allowed: allowed})
 		}
 	}
 	return s
 }
 
 func (s *SourceBuilder) Build() Source {
-	// fmt.Printf("DENIED PODS %+v\n", s.denyPodTargets)
-	// for _, deniedPod := range s.denyPodTargets {
-	// 	skip := false
-	// 	fmt.Printf("ALLOWED TARGETS %+v\n", *s.source.Targets)
-	// 	for _, allowedTarget := range s.source.Targets {
-
-	// 		fmt.Printf("ALLOWED TARGET %+v\n", *allowedTarget.Pod)
-	// 		if allowedTarget.Pod != nil && allowedTarget.Pod.PodName == deniedPod.PodName && allowedTarget.Pod.Port == deniedPod.Port {
-	// 			skip = true
-	// 			break
-	// 		}
-	// 	}
-
-	// 	if !skip {
-	// 		s.source.Targets = append(s.source.Targets, Target{&deniedPod, nil, false})
-	// 	}
-	// }
-
-	// fmt.Printf("TARGETS %+v\n", s.source.Targets)
-
-	// for _, denyHost := range s.denyHostTargets {
-	// 	found := false
-	// 	for i, allowedTarget := range s.source.Targets {
-	// 		if allowedTarget.Host != nil && allowedTarget.Host.HostName == denyHost.HostName && allowedTarget.Host.Port == denyHost.Port {
-	// 			s.source.Targets[i] = allowedTarget
-	// 			found = true
-	// 			break
-	// 		}
-	// 	}
-
-	// 	if !found {
-	// 		s.source.Targets = append(s.source.Targets, Target{nil, &denyHost, false})
-	// 	}
-	// }
 	return s.source
 }

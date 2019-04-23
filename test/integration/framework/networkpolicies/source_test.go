@@ -22,21 +22,21 @@ import (
 var _ = Describe("SourceBuilder test", func() {
 
 	var (
-		// denyPod = &PodInfo{
-		// 	PodName: "target",
-		// 	Port:    8080,
+		denyPod = &PodInfo{
+			PodName: "target",
+			Port:    8080,
+		}
+
+		// denyHost = &Host{
+		// 	Description: "metadata service",
+		// 	HostName:    "example.com",
+		// 	Port:        80,
 		// }
 
-		denyHost = &Host{
-			Description: "metadata service",
-			HostName:    "example.com",
-			Port:        80,
-		}
-
-		allowedPod = &PodInfo{
-			PodName: "allowed",
-			Port:    443,
-		}
+		// allowedPod = &PodInfo{
+		// 	PodName: "allowed",
+		// 	Port:    443,
+		// }
 
 		// allowedHost = &Host{
 		// 	Description: "some-description",
@@ -44,10 +44,8 @@ var _ = Describe("SourceBuilder test", func() {
 		// 	Port:        9090,
 		// }
 
-		source      *PodInfo
-		builder     *SourceBuilder
-		deniedPods  []PodInfo
-		deniedHosts []Host
+		source  *PodInfo
+		builder *SourceBuilder
 	)
 
 	BeforeEach(func() {
@@ -57,7 +55,7 @@ var _ = Describe("SourceBuilder test", func() {
 		}
 	})
 	JustBeforeEach(func() {
-		builder = NewSource(source, deniedPods, deniedHosts)
+		builder = NewSource(source)
 	})
 
 	// Context("no deny all provided", func() {
@@ -158,7 +156,35 @@ var _ = Describe("SourceBuilder test", func() {
 
 	// })
 
-	Context("multople deny provided", func() {
+	// Context("multople deny provided", func() {
+	// 	var (
+	// 		denyPod1 = &PodInfo{
+	// 			PodName: "target-1",
+	// 			Port:    8080,
+	// 		}
+	// 		denyPod2 = &PodInfo{
+	// 			PodName: "target-2",
+	// 			Port:    8080,
+	// 		}
+	// 	)
+	// 	BeforeEach(func() {
+	// 		deniedPods = []PodInfo{*denyPod1, *denyPod2}
+	// 		deniedHosts = []Host{*denyHost}
+	// 	})
+
+	// 	It("should return correct items when passing multiple values", func() {
+	// 		expected := Source{source, []Target{
+	// 			{allowedPod, nil, true},
+	// 			{denyPod1, nil, false},
+	// 			{denyPod2, nil, false},
+	// 			{nil, denyHost, false},
+	// 		}}
+
+	// 		Expect(builder.AllowPod(allowedPod).Build()).To(Equal(expected))
+	// 	})
+	// })
+
+	Context("deny and allow", func() {
 		var (
 			denyPod1 = &PodInfo{
 				PodName: "target-1",
@@ -169,20 +195,34 @@ var _ = Describe("SourceBuilder test", func() {
 				Port:    8080,
 			}
 		)
-		BeforeEach(func() {
-			deniedPods = []PodInfo{*denyPod1, *denyPod2}
-			deniedHosts = []Host{*denyHost}
+
+		It("should accept multipe entries", func() {
+			result := builder.DenyPod(denyPod1, denyPod2).AllowPod(denyPod2).Build()
+			expected := Source{source, []Target{
+				{denyPod1, nil, false},
+				{denyPod2, nil, true},
+			}}
+			Expect(result).To(Equal(expected))
 		})
 
-		It("should return correct items when passing multiple values", func() {
+		It("should accept multipe entries", func() {
+			result := builder.DenyPod(denyPod1, denyPod, denyPod2).AllowPod(denyPod1).Build()
 			expected := Source{source, []Target{
-				{allowedPod, nil, true},
-				{denyPod1, nil, false},
+				{denyPod1, nil, true},
+				{denyPod, nil, false},
 				{denyPod2, nil, false},
-				{nil, denyHost, false},
 			}}
+			Expect(result).To(Equal(expected))
+		})
 
-			Expect(builder.AllowPod(allowedPod).Build()).To(Equal(expected))
+		It("should accept multipe entries", func() {
+			result := builder.AllowPod(denyPod1, denyPod, denyPod2).Build()
+			expected := Source{source, []Target{
+				{denyPod1, nil, true},
+				{denyPod, nil, true},
+				{denyPod2, nil, true},
+			}}
+			Expect(result).To(Equal(expected))
 		})
 	})
 

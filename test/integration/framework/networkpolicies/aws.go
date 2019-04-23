@@ -80,21 +80,21 @@ func (a *AWSPodInfo) ToSources() []Source {
 }
 
 func (a *AWSPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
-	denyAll := []PodInfo{
-		*KubeAPIServerInfo,
-		*AWSKubeControllerManagerInfo,
-		*KubeSchedulerInfo,
-		*EtcdMainInfo,
-		*EtcdEventsInfo,
-		*CloudControllerManagerInfo,
-		*ElasticSearchInfo,
-		*GrafanaInfo,
-		*KibanaInfo,
-		*KubeStateMetricsSeedInfo,
-		*KubeStateMetricsShootInfo,
-		*MachineControllerManagerInfo,
-		*PrometheusInfo,
-		*AddonManagerInfo,
+	denyAll := []*PodInfo{
+		KubeAPIServerInfo,
+		AWSKubeControllerManagerInfo,
+		KubeSchedulerInfo,
+		EtcdMainInfo,
+		EtcdEventsInfo,
+		CloudControllerManagerInfo,
+		ElasticSearchInfo,
+		GrafanaInfo,
+		KibanaInfo,
+		KubeStateMetricsSeedInfo,
+		KubeStateMetricsShootInfo,
+		MachineControllerManagerInfo,
+		PrometheusInfo,
+		AddonManagerInfo,
 	}
-	return NewSource(sourcePod, denyAll, []Host{*AWSMetadataServiceHost})
+	return NewSource(sourcePod).DenyPod(denyAll...).DenyHost(AWSMetadataServiceHost)
 }
