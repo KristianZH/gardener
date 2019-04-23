@@ -20,7 +20,6 @@ spec:
         networking.gardener.cloud/to-dns: allowed
         networking.gardener.cloud/to-shoot-apiserver: allowed
         networking.gardener.cloud/to-public-except-private-medatadata: allowed
-        networking.gardener.cloud/from-prometheus: allowed
 {{- if .Values.podAnnotations }}
       annotations:
 {{ toYaml .Values.podAnnotations | indent 8 }}

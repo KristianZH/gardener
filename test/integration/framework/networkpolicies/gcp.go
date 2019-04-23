@@ -21,8 +21,8 @@ import (
 
 var (
 
-	// AWSKubeControllerManagerInfo points to aws-specific kube-controller-manager.
-	AWSKubeControllerManagerInfo = &PodInfo{
+	// GCPKubeControllerManagerInfo points to gcp-specific kube-controller-manager.
+	GCPKubeControllerManagerInfo = &PodInfo{
 		PodName: "kube-controller-manager",
 		Port:    10252,
 		Labels: labels.Set{
@@ -41,58 +41,41 @@ var (
 		),
 	}
 
-	// AWSLBReadvertiserInfo points to aws-specific aws-lb-readvertiser.
-	AWSLBReadvertiserInfo = &PodInfo{
-		PodName: "aws-lb-readvertiser",
-		Port:    8080,
-		Labels: labels.Set{
-			"app":                     "aws-lb-readvertiser",
-			"garden.sapcloud.io/role": "controlplane",
-		},
-		ExpectedPolicies: sets.NewString(
-			"allow-to-public-except-private-and-metadata",
-			"allow-to-dns",
-			"allow-to-shoot-apiserver",
-			"deny-all",
-		),
-	}
-
-	// AWSMetadataServiceHost points to aws-specific Metadata service.
-	AWSMetadataServiceHost = &Host{
+	// GCPMetadataServiceHost points to gcp-specific Metadata service.
+	GCPMetadataServiceHost = &Host{
 		Description: "Metadata service",
 		HostName:    "169.254.169.254",
 		Port:        80,
 	}
 )
 
-// AWSPodInfo holds aws-specific podInfo.
-type AWSPodInfo struct {
+// GCPPodInfo holds gcp-specific podInfo.
+type GCPPodInfo struct {
 }
 
-// ToSources returns list of all aws-specific sources and targets.
-func (a *AWSPodInfo) ToSources() []Source {
+// ToSources returns list of all gcp-specific sources and targets.
+func (a *GCPPodInfo) ToSources() []Source {
 
 	return []Source{
 		a.newSource(KubeAPIServerInfo).AllowPod(EtcdMainInfo, EtcdEventsInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(EtcdMainInfo).AllowHost(ExternalHost).Build(),
 		a.newSource(EtcdEventsInfo).AllowHost(ExternalHost).Build(),
-		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(ElasticSearchInfo).Build(),
 		a.newSource(GrafanaInfo).AllowPod(PrometheusInfo).Build(),
 		a.newSource(KibanaInfo).AllowPod(ElasticSearchInfo).Build(),
 		a.newSource(AddonManagerInfo).AllowPod(KubeAPIServerInfo).Build(),
-		a.newSource(AWSKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(GCPKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(KubeSchedulerInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsShootInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsSeedInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(MachineControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
-		a.newSource(AWSLBReadvertiserInfo).AllowPod(KubeAPIServerInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(PrometheusInfo).AllowPod(
 			KubeAPIServerInfo,
 			EtcdMainInfo,
 			EtcdEventsInfo,
 			CloudControllerManagerInfo,
-			AWSKubeControllerManagerInfo,
+			GCPKubeControllerManagerInfo,
 			KubeSchedulerInfo,
 			KubeStateMetricsShootInfo,
 			KubeStateMetricsSeedInfo,
@@ -101,10 +84,10 @@ func (a *AWSPodInfo) ToSources() []Source {
 	}
 }
 
-func (a *AWSPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
+func (a *GCPPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 	denyAll := []*PodInfo{
 		KubeAPIServerInfo,
-		AWSKubeControllerManagerInfo,
+		GCPKubeControllerManagerInfo,
 		KubeSchedulerInfo,
 		EtcdMainInfo,
 		EtcdEventsInfo,
@@ -117,7 +100,6 @@ func (a *AWSPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 		MachineControllerManagerInfo,
 		PrometheusInfo,
 		AddonManagerInfo,
-		AWSLBReadvertiserInfo,
 	}
-	return NewSource(sourcePod).DenyPod(denyAll...).DenyHost(AWSMetadataServiceHost, ExternalHost, GardenPrometheus)
+	return NewSource(sourcePod).DenyPod(denyAll...).DenyHost(GCPMetadataServiceHost, ExternalHost, GardenPrometheus)
 }

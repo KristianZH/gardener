@@ -262,6 +262,24 @@ var (
 			"role": "testing",
 		},
 	}
+
+	ExternalHost = &Host{
+		Description: "External host",
+		HostName:    "8.8.8.8",
+		Port:        53,
+	}
+
+	SeedKubeAPIServer = &Host{
+		Description: "Seed Kube APIServer",
+		HostName:    "kubernetes.default",
+		Port:        443,
+	}
+
+	GardenPrometheus = &Host{
+		Description: "Garden Prometheus",
+		HostName:    "prometheus-web.garden",
+		Port:        80,
+	}
 )
 
 type CloudAwarePodInfo interface {

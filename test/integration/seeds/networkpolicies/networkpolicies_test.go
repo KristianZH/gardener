@@ -21,14 +21,15 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"reflect"
 	"sync"
 	"time"
 
-	"github.com/gardener/gardener/test/integration/framework/networkpolicies"
-
 	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
+	"github.com/gardener/gardener/pkg/client/kubernetes"
 	"github.com/gardener/gardener/pkg/logger"
 	. "github.com/gardener/gardener/test/integration/framework"
+	"github.com/gardener/gardener/test/integration/framework/networkpolicies"
 	. "github.com/gardener/gardener/test/integration/shoots"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -72,9 +73,11 @@ var _ = Describe("Network Policy Testing", func() {
 
 	// SharedResources are shared between Ginkgo instances
 	type SharedResources struct {
-		Mirror   string                       `json:"mirror"`
-		External string                       `json:"external"`
-		Policies []networkingv1.NetworkPolicy `json:"policies"`
+		Mirror        string                       `json:"mirror"`
+		External      string                       `json:"external"`
+		SeedNodeIP    string                       `json:"seedNodeIP"`
+		Policies      []networkingv1.NetworkPolicy `json:"policies"`
+		CloudProvider v1beta1.CloudProvider        `json:"cloudProvider"`
 	}
 
 	var (
@@ -83,6 +86,26 @@ var _ = Describe("Network Policy Testing", func() {
 		shootAppTestLogger  *logrus.Logger
 		sharedResources     SharedResources
 
+		// providers = map[v1beta1.CloudProvider]networkpolicies.CloudAwarePodInfo{
+		// 	v1beta1.CloudProviderAWS: &networkpolicies.AWSPodInfo{},
+		// 	v1beta1.CloudProviderGCP: &networkpolicies.GCPPodInfo{},
+		// }
+
+		setGlobals = func(ctx context.Context) {
+
+			validateFlags()
+			shootAppTestLogger = logger.AddWriter(logger.NewLogger(*logLevel), GinkgoWriter)
+
+			if StringSet(*shootName) {
+				var err error
+				shootGardenerTest, err = NewShootGardenerTest(*kubeconfig, nil, shootAppTestLogger)
+				Expect(err).NotTo(HaveOccurred())
+
+				shoot := &v1beta1.Shoot{ObjectMeta: metav1.ObjectMeta{Namespace: *shootNamespace, Name: *shootName}}
+				shootTestOperations, err = NewGardenTestOperation(ctx, shootGardenerTest.GardenClient, shootAppTestLogger, shoot)
+				Expect(err).NotTo(HaveOccurred())
+			}
+		}
 		createBusyBox = func(ctx context.Context, npi *networkpolicies.NamespacedPodInfo, ports ...corev1.ContainerPort) {
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -128,16 +151,27 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By(fmt.Sprintf("Executing connectivity command from %s/%s to %s:%d", sourcePod.Namespace, sourcePod.PodName, host, port))
-			command := fmt.Sprintf("nc -v -z -w 2 %s %d", host, port)
+			command := fmt.Sprintf("nc -v -z -w 3 %s %d", host, port)
 
 			return shootTestOperations.PodExecByLabel(ctx, sourcePod.Selector(), "busybox", command, sourcePod.Namespace, shootTestOperations.SeedClient)
 		}
 
-		assertCanConnect = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetPod *networkpolicies.NamespacedPodInfo) {
-			pod := getTargetPod(ctx, targetPod)
-			r, err := establishConnectionToHost(ctx, sourcePod, pod.Status.PodIP, targetPod.Port)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			ExpectWithOffset(1, r).NotTo(BeNil())
+		getFirstNodeInternalIP = func(ctx context.Context, cl kubernetes.Interface) (string, error) {
+			nodes := &corev1.NodeList{}
+			err := cl.Client().List(ctx, &client.ListOptions{Raw: &metav1.ListOptions{Limit: 1}}, nodes)
+			if err != nil {
+				return "", err
+			}
+
+			if len(nodes.Items) > 0 {
+				firstNode := nodes.Items[0]
+				for _, address := range firstNode.Status.Addresses {
+					if address.Type == corev1.NodeInternalIP {
+						return address.Address, nil
+					}
+				}
+			}
+			return "", ErrNoInternalIPsForNodeWasFound
 		}
 
 		assertCanConnectToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, host string, port int32) {
@@ -146,15 +180,9 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectWithOffset(1, r).NotTo(BeNil())
 		}
 
-		assertCannotConnect = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetPod *networkpolicies.NamespacedPodInfo) {
+		assertCanConnectToPod = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetPod *networkpolicies.NamespacedPodInfo) {
 			pod := getTargetPod(ctx, targetPod)
-			r, err := establishConnectionToHost(ctx, sourcePod, pod.Status.PodIP, targetPod.Port)
-			ExpectWithOffset(1, err).To(HaveOccurred())
-			bytes, err := ioutil.ReadAll(r)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
-			By("Connection message is timed out\n")
-			ExpectWithOffset(1, string(bytes)).To(ContainSubstring("Connection timed out"))
+			assertCanConnectToHost(ctx, sourcePod, pod.Status.PodIP, targetPod.Port)
 		}
 
 		assertCannotConnectToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, host string, port int32) {
@@ -164,27 +192,21 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("Connection message is timed out\n")
-			ExpectWithOffset(1, string(bytes)).To(ContainSubstring("Connection timed out"))
+			ExpectWithOffset(1, string(bytes)).To(SatisfyAny(ContainSubstring("Connection timed out"), ContainSubstring("nc: bad address")))
+		}
+
+		assertCannotConnect = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetPod *networkpolicies.NamespacedPodInfo) {
+			pod := getTargetPod(ctx, targetPod)
+			assertCannotConnectToHost(ctx, sourcePod, pod.Status.PodIP, targetPod.Port)
 		}
 	)
 
 	SynchronizedBeforeSuite(func() []byte {
 
-		// todo fix context
-		ctx := context.TODO()
+		ctx, cancel := context.WithTimeout(context.TODO(), time.Minute)
+		defer cancel()
 
-		validateFlags()
-		shootAppTestLogger = logger.AddWriter(logger.NewLogger(*logLevel), GinkgoWriter)
-
-		if StringSet(*shootName) {
-			var err error
-			shootGardenerTest, err = NewShootGardenerTest(*kubeconfig, nil, shootAppTestLogger)
-			Expect(err).NotTo(HaveOccurred())
-
-			shoot := &v1beta1.Shoot{ObjectMeta: metav1.ObjectMeta{Namespace: *shootNamespace, Name: *shootName}}
-			shootTestOperations, err = NewGardenTestOperation(ctx, shootGardenerTest.GardenClient, shootAppTestLogger, shoot)
-			Expect(err).NotTo(HaveOccurred())
-		}
+		setGlobals(ctx)
 		var err error
 
 		By("Creating namespace for Ingress testing")
@@ -232,17 +254,21 @@ var _ = Describe("Network Policy Testing", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		cloudProvider, err := shootTestOperations.GetCloudProvider()
+		sharedResources.CloudProvider, err = shootTestOperations.GetCloudProvider()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Getting fist running node")
+		sharedResources.SeedNodeIP, err = getFirstNodeInternalIP(ctx, shootTestOperations.SeedClient)
 		Expect(err).NotTo(HaveOccurred())
 
 		podList := []networkpolicies.Source{}
-		switch cloudProvider {
+		switch sharedResources.CloudProvider {
 
 		case v1beta1.CloudProviderAWS:
 			pi := networkpolicies.AWSPodInfo{}
 			podList = pi.ToSources()
 		default:
-			Fail(fmt.Sprintf("Not suported cloud provider %s", cloudProvider))
+			Fail(fmt.Sprintf("Not suported cloud provider %s", sharedResources.CloudProvider))
 		}
 
 		var wg sync.WaitGroup
@@ -285,24 +311,14 @@ var _ = Describe("Network Policy Testing", func() {
 		return b
 	}, func(data []byte) {
 
-		ctx := context.TODO()
+		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*30)
+		defer cancel()
 
 		sr := &SharedResources{}
 		err := json.Unmarshal(data, sr)
 		Expect(err).NotTo(HaveOccurred())
 
-		validateFlags()
-		shootAppTestLogger = logger.AddWriter(logger.NewLogger(*logLevel), GinkgoWriter)
-
-		if StringSet(*shootName) {
-			var err error
-			shootGardenerTest, err = NewShootGardenerTest(*kubeconfig, nil, shootAppTestLogger)
-			Expect(err).NotTo(HaveOccurred())
-
-			shoot := &v1beta1.Shoot{ObjectMeta: metav1.ObjectMeta{Namespace: *shootNamespace, Name: *shootName}}
-			shootTestOperations, err = NewGardenTestOperation(ctx, shootGardenerTest.GardenClient, shootAppTestLogger, shoot)
-			Expect(err).NotTo(HaveOccurred())
-		}
+		setGlobals(ctx)
 
 		sharedResources = *sr
 
@@ -310,11 +326,14 @@ var _ = Describe("Network Policy Testing", func() {
 
 	SynchronizedAfterSuite(func() {
 
-		if true {
+		if *cleanup {
 			return
 		}
 
-		ctx := context.TODO()
+		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*30)
+		defer cancel()
+
+		setGlobals(ctx)
 
 		namespaces := &corev1.NamespaceList{}
 		selector := &client.ListOptions{
@@ -331,11 +350,9 @@ var _ = Describe("Network Policy Testing", func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 		}
-	}, func() {
+	}, func() {})
 
-	})
-
-	Context("Old Deprecated policies are removed", func() {
+	Context("Deprecated old policies are removed", func() {
 
 		const (
 			deprecatedKubeAPIServerPolicy = "kube-apiserver-default"
@@ -358,14 +375,15 @@ var _ = Describe("Network Policy Testing", func() {
 		CIt(deprecatedKubeAPIServerPolicy, assertPolicyIsGone(deprecatedKubeAPIServerPolicy), timeout)
 		CIt(deprecatedMetadataAppPolicy, assertPolicyIsGone(deprecatedMetadataAppPolicy), timeout)
 		CIt(deprecatedMetadataRolePolicy, assertPolicyIsGone(deprecatedMetadataRolePolicy), timeout)
-
 	})
 
-	FContext("AWS", func() {
-		provider := networkpolicies.AWSPodInfo{}
-		Context("Components are selected by correct policies", func() {
+	// for provider, cloudAwarePodInfo := range providers {
 
-			for _, source := range provider.ToSources() {
+	FContext(string(v1beta1.CloudProviderAWS), func() {
+		cloudAwarePodInfo := networkpolicies.AWSPodInfo{}
+		Context("components are selected by correct policies", func() {
+
+			for _, source := range cloudAwarePodInfo.ToSources() {
 				podInfo := source.Pod
 
 				CIt(fmt.Sprintf("%s", podInfo.PodName), func(ctx context.Context) {
@@ -393,26 +411,46 @@ var _ = Describe("Network Policy Testing", func() {
 
 		})
 
-		Context("Ingress from other namespaces", func() {
-			for _, source := range provider.ToSources() {
+		Context("ingress from other namespaces", func() {
+			for _, source := range cloudAwarePodInfo.ToSources() {
 				podInfo := source.Pod
 
 				if podInfo.PodName == "kube-apiserver" {
-					CIt("should allow connectivity to kube-apiserver", func(ctx context.Context) {
-						assertCanConnect(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(podInfo, shootTestOperations.ShootSeedNamespace()))
+					CIt("should allow connectivity from busybox to kube-apiserver", func(ctx context.Context) {
+						assertCanConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(podInfo, shootTestOperations.ShootSeedNamespace()))
 					}, 30*time.Second)
 				} else {
-					CIt(fmt.Sprintf("should block connectivity to %s", podInfo.PodName), func(ctx context.Context) {
+					CIt(fmt.Sprintf("should block connectivity from busybox to %s", podInfo.PodName), func(ctx context.Context) {
 						assertCannotConnect(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(podInfo, shootTestOperations.ShootSeedNamespace()))
 					}, 30*time.Second)
 				}
 			}
 		})
 
-		Context("Mirrored pods", func() {
+		Context("egress to other namespaces", func() {
+			for _, source := range cloudAwarePodInfo.ToSources() {
+				podInfo := source.Pod
+				CIt(fmt.Sprintf("should block connectivity from %s to %s", podInfo.PodName, networkpolicies.BusyboxInfo.PodName), func(ctx context.Context) {
+
+					assertCannotConnect(ctx, networkpolicies.NewNamespacedPodInfo(podInfo, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External))
+				}, 30*time.Second)
+			}
+		})
+
+		Context("egress to Seed nodes", func() {
+			for _, source := range cloudAwarePodInfo.ToSources() {
+				podInfo := source.Pod
+				CIt(fmt.Sprintf("should block connectivity from %s", podInfo.PodName), func(ctx context.Context) {
+
+					assertCannotConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(podInfo, sharedResources.Mirror), sharedResources.SeedNodeIP, 10250)
+				}, 30*time.Second)
+			}
+		})
+
+		Context("mirrored pods", func() {
 
 			var (
-				allSources           = provider.ToSources()
+				allSources           = cloudAwarePodInfo.ToSources()
 				NetworkPolicyTimeout = 30 * time.Second
 			)
 
@@ -422,13 +460,15 @@ var _ = Describe("Network Policy Testing", func() {
 
 					for _, t := range s.Targets {
 						t := t
-						if t.Pod != nil {
+						if t.Pod != nil && !reflect.DeepEqual(t.Pod, s.Pod) {
 							if t.Allowed {
 								CIt(fmt.Sprintf("should allow connectivity to %s", t.Pod.PodName), func(ctx context.Context) {
-									assertCanConnect(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(t.Pod, sharedResources.Mirror))
+
+									assertCanConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(t.Pod, sharedResources.Mirror))
 								}, NetworkPolicyTimeout)
 							} else {
 								CIt(fmt.Sprintf("should block connectivity to %s", t.Pod.PodName), func(ctx context.Context) {
+
 									assertCannotConnect(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(t.Pod, sharedResources.Mirror))
 								}, NetworkPolicyTimeout)
 							}
@@ -437,10 +477,12 @@ var _ = Describe("Network Policy Testing", func() {
 						if host := t.Host; t.Host != nil {
 							if t.Allowed {
 								CIt(fmt.Sprintf("should allow connectivity to %q (%s:%d)", host.Description, host.HostName, host.Port), func(ctx context.Context) {
+
 									assertCanConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), host.HostName, host.Port)
 								}, NetworkPolicyTimeout)
 							} else {
 								CIt(fmt.Sprintf("should block connectivity to %q (%s:%d)", host.Description, host.HostName, host.Port), func(ctx context.Context) {
+
 									assertCannotConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), host.HostName, host.Port)
 								}, NetworkPolicyTimeout)
 							}
@@ -452,4 +494,123 @@ var _ = Describe("Network Policy Testing", func() {
 			}
 		})
 	})
+
+	// }
+
+	FContext(string(v1beta1.CloudProviderGCP), func() {
+		cloudAwarePodInfo := networkpolicies.GCPPodInfo{}
+		Context("components are selected by correct policies", func() {
+
+			for _, source := range cloudAwarePodInfo.ToSources() {
+				podInfo := source.Pod
+
+				CIt(fmt.Sprintf("%s", podInfo.PodName), func(ctx context.Context) {
+
+					matched := sets.NewString()
+					var podLabelSet labels.Set
+
+					By(fmt.Sprintf("Getting first running pod with selectors %q in namespace %q", podInfo.Labels, shootTestOperations.ShootSeedNamespace()))
+					pod, err := shootTestOperations.GetFirstRunningPodWithLabels(ctx, podInfo.Selector(), shootTestOperations.ShootSeedNamespace(), shootTestOperations.SeedClient)
+					podLabelSet = pod.GetLabels()
+					Expect(err).NotTo(HaveOccurred())
+
+					for _, netPol := range sharedResources.Policies {
+						netPolSelector, err := metav1.LabelSelectorAsSelector(&netPol.Spec.PodSelector)
+						Expect(err).NotTo(HaveOccurred())
+
+						if netPolSelector.Matches(podLabelSet) {
+							matched.Insert(netPol.GetName())
+						}
+					}
+					By(fmt.Sprintf("Matching actual network policies against expected %s", podInfo.ExpectedPolicies.List()))
+					Expect(matched.List()).Should(ConsistOf(podInfo.ExpectedPolicies.List()))
+				}, 10*time.Second)
+			}
+
+		})
+
+		Context("ingress from other namespaces", func() {
+			for _, source := range cloudAwarePodInfo.ToSources() {
+				podInfo := source.Pod
+
+				if podInfo.PodName == "kube-apiserver" {
+					CIt("should allow connectivity from busybox to kube-apiserver", func(ctx context.Context) {
+						assertCanConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(podInfo, shootTestOperations.ShootSeedNamespace()))
+					}, 30*time.Second)
+				} else {
+					CIt(fmt.Sprintf("should block connectivity from busybox to %s", podInfo.PodName), func(ctx context.Context) {
+						assertCannotConnect(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(podInfo, shootTestOperations.ShootSeedNamespace()))
+					}, 30*time.Second)
+				}
+			}
+		})
+
+		Context("egress to other namespaces", func() {
+			for _, source := range cloudAwarePodInfo.ToSources() {
+				podInfo := source.Pod
+				CIt(fmt.Sprintf("should block connectivity from %s to %s", podInfo.PodName, networkpolicies.BusyboxInfo.PodName), func(ctx context.Context) {
+
+					assertCannotConnect(ctx, networkpolicies.NewNamespacedPodInfo(podInfo, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External))
+				}, 30*time.Second)
+			}
+		})
+
+		Context("egress to Seed nodes", func() {
+			for _, source := range cloudAwarePodInfo.ToSources() {
+				podInfo := source.Pod
+				CIt(fmt.Sprintf("should block connectivity from %s", podInfo.PodName), func(ctx context.Context) {
+
+					assertCannotConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(podInfo, sharedResources.Mirror), sharedResources.SeedNodeIP, 10250)
+				}, 30*time.Second)
+			}
+		})
+
+		Context("mirrored pods", func() {
+
+			var (
+				allSources           = cloudAwarePodInfo.ToSources()
+				NetworkPolicyTimeout = 30 * time.Second
+			)
+
+			for _, s := range allSources {
+				s := s
+				Context(s.Pod.PodName, func() {
+
+					for _, t := range s.Targets {
+						t := t
+						if t.Pod != nil && !reflect.DeepEqual(t.Pod, s.Pod) {
+							if t.Allowed {
+								CIt(fmt.Sprintf("should allow connectivity to %s", t.Pod.PodName), func(ctx context.Context) {
+
+									assertCanConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(t.Pod, sharedResources.Mirror))
+								}, NetworkPolicyTimeout)
+							} else {
+								CIt(fmt.Sprintf("should block connectivity to %s", t.Pod.PodName), func(ctx context.Context) {
+
+									assertCannotConnect(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(t.Pod, sharedResources.Mirror))
+								}, NetworkPolicyTimeout)
+							}
+						}
+
+						if host := t.Host; t.Host != nil {
+							if t.Allowed {
+								CIt(fmt.Sprintf("should allow connectivity to %q (%s:%d)", host.Description, host.HostName, host.Port), func(ctx context.Context) {
+
+									assertCanConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), host.HostName, host.Port)
+								}, NetworkPolicyTimeout)
+							} else {
+								CIt(fmt.Sprintf("should block connectivity to %q (%s:%d)", host.Description, host.HostName, host.Port), func(ctx context.Context) {
+
+									assertCannotConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), host.HostName, host.Port)
+								}, NetworkPolicyTimeout)
+							}
+
+						}
+					}
+
+				})
+			}
+		})
+	})
+
 })

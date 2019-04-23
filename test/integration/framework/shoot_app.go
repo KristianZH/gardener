@@ -379,39 +379,6 @@ func (o *GardenerTestOperation) PodExecByLabel(ctx context.Context, podLabels la
 	return kubernetes.NewPodExecutor(client.RESTConfig()).Execute(ctx, pod.Namespace, pod.Name, podContainer, command)
 }
 
-// GetFirstNodeInternalIP gets the internal IP of the first node
-func (o *GardenerTestOperation) GetFirstNodeInternalIP(ctx context.Context) (string, error) {
-	nodes := &corev1.NodeList{}
-	err := o.ShootClient.Client().List(ctx, &client.ListOptions{}, nodes)
-	if err != nil {
-		return "", err
-	}
-
-	if len(nodes.Items) > 0 {
-		firstNode := nodes.Items[0]
-		for _, address := range firstNode.Status.Addresses {
-			if address.Type == corev1.NodeInternalIP {
-				return address.Address, nil
-			}
-		}
-	}
-	return "", ErrNoInternalIPsForNodeWasFound
-}
-
-// GetCoreDNSPodIP gets the CoreDNS IP
-func (o *GardenerTestOperation) GetCoreDNSPodIP(ctx context.Context) (string, error) {
-	coreDNSLabels := labels.SelectorFromSet(labels.Set(map[string]string{
-		"k8s-app": "kube-dns",
-	}))
-
-	coreDNS, err := o.GetFirstRunningPodWithLabels(ctx, coreDNSLabels, metav1.NamespaceSystem, o.ShootClient)
-	if err != nil {
-		return "", err
-	}
-
-	return coreDNS.Status.PodIP, nil
-}
-
 // GetDashboardPodIP gets the dashboard IP
 func (o *GardenerTestOperation) GetDashboardPodIP(ctx context.Context) (string, error) {
 	dashboardLabels := labels.SelectorFromSet(labels.Set(map[string]string{
