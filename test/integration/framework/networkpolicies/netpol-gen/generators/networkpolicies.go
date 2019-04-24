@@ -221,7 +221,6 @@ const (
 )
 
 func validateFlags() {
-
 	if !StringSet(*kubeconfig) {
 		Fail("you need to specify the correct path for the kubeconfig")
 	}
@@ -229,7 +228,6 @@ func validateFlags() {
 	if !FileExists(*kubeconfig) {
 		Fail("kubeconfig path does not exist")
 	}
-
 }
 
 var _ = Describe("Network Policy Testing", func() {
@@ -256,6 +254,7 @@ var _ = Describe("Network Policy Testing", func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 		}
+
 		createBusyBox = func(ctx context.Context, npi *networkpolicies.NamespacedPodInfo, ports ...corev1.ContainerPort) {
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -280,7 +279,6 @@ var _ = Describe("Network Policy Testing", func() {
 
 			err = shootTestOperations.WaitUntilPodIsRunning(ctx, pod.GetName(), npi.Namespace, shootTestOperations.SeedClient)
 			Expect(err).NotTo(HaveOccurred())
-
 		}
 
 		getTargetPod = func(ctx context.Context, targetPod *networkpolicies.NamespacedPodInfo) *corev1.Pod {
@@ -321,6 +319,7 @@ var _ = Describe("Network Policy Testing", func() {
 					}
 				}
 			}
+
 			return "", ErrNoInternalIPsForNodeWasFound
 		}
 
@@ -367,7 +366,6 @@ var _ = Describe("Network Policy Testing", func() {
 	)
 
 	SynchronizedBeforeSuite(func() []byte {
-
 		ctx, cancel := context.WithTimeout(context.TODO(), time.Minute)
 		defer cancel()
 
@@ -471,7 +469,6 @@ var _ = Describe("Network Policy Testing", func() {
 
 		return b
 	}, func(data []byte) {
-
 		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*30)
 		defer cancel()
 
@@ -482,11 +479,9 @@ var _ = Describe("Network Policy Testing", func() {
 		setGlobals(ctx)
 
 		sharedResources = *sr
-
 	})
 
 	SynchronizedAfterSuite(func() {
-
 		if *cleanup {
 			return
 		}
@@ -567,7 +562,6 @@ var _ = Describe("Network Policy Testing", func() {
 		for _, source := range cloudAwarePodInfo.ToSources() {
 			CIt(fmt.Sprintf("%s", source.Pod.PodName), assertHasNetworkPolicy(source.Pod), 10*time.Second)
 		}
-
 	})
 
 	Context("ingress from other namespaces", func() {
@@ -576,7 +570,6 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt(tp.ToString(), func(ctx context.Context) {
 				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(tp.Pod, shootTestOperations.ShootSeedNamespace()), tp.Allowed)
 			}, 30*time.Second)
-
 		}
 	})
 
@@ -622,12 +615,9 @@ var _ = Describe("Network Policy Testing", func() {
 					CIt(t.ToString(), func(ctx context.Context) {
 						assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), t)
 					}, NetworkPolicyTimeout)
-
 				}
-
 			})
 		}
 	})
-
 })
 `

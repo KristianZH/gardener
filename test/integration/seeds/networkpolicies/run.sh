@@ -1,6 +1,6 @@
 #!/bin/sh
 
-ginkgo -progress -v -noColor -nodes=25 --focus=aws . -- \
+ginkgo -progress -v -noColor -nodes=25 aws -- \
         -kubeconfig $HOME/.kube/config \
         -shootName "shoot" \
         -shootNamespace "garden-i355448"

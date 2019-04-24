@@ -21,8 +21,8 @@ import (
 
 var (
 
-	// GCPKubeControllerManagerInfo points to gcp-specific kube-controller-manager.
-	GCPKubeControllerManagerInfo = &PodInfo{
+	// OpenStackKubeControllerManagerInfo points to openstack-specific kube-controller-manager.
+	OpenStackKubeControllerManagerInfo = &PodInfo{
 		PodName: "kube-controller-manager",
 		Port:    10252,
 		Labels: labels.Set{
@@ -41,33 +41,33 @@ var (
 		),
 	}
 
-	// GCPMetadataServiceHost points to gcp-specific Metadata service.
-	GCPMetadataServiceHost = &Host{
+	// OpenStackMetadataServiceHost points to openstack-specific Metadata service.
+	OpenStackMetadataServiceHost = &Host{
 		Description: "Metadata service",
 		HostName:    "169.254.169.254",
 		Port:        80,
 	}
 )
 
-// GCPPodInfo holds gcp-specific podInfo.
+// OpenStackPodInfo holds openstack-specific podInfo.
 // +gen-netpoltests=true
-// +gen-packagename=gcp
-type GCPPodInfo struct {
+// +gen-packagename=openstack
+type OpenStackPodInfo struct {
 }
 
-// ToSources returns list of all gcp-specific sources and targets.
-func (a *GCPPodInfo) ToSources() []Source {
+// ToSources returns list of all openstack-specific sources and targets.
+func (a *OpenStackPodInfo) ToSources() []Source {
 
 	return []Source{
 		a.newSource(KubeAPIServerInfo).AllowPod(EtcdMainInfo, EtcdEventsInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(EtcdMainInfo).AllowHost(ExternalHost).Build(),
 		a.newSource(EtcdEventsInfo).AllowHost(ExternalHost).Build(),
-		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(OpenStackMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(ElasticSearchInfo).Build(),
 		a.newSource(GrafanaInfo).AllowPod(PrometheusInfo).Build(),
 		a.newSource(KibanaInfo).AllowPod(ElasticSearchInfo).Build(),
 		a.newSource(AddonManagerInfo).AllowPod(KubeAPIServerInfo).Build(),
-		a.newSource(GCPKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(OpenStackKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(OpenStackMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(KubeSchedulerInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsShootInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsSeedInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
@@ -77,7 +77,7 @@ func (a *GCPPodInfo) ToSources() []Source {
 			EtcdMainInfo,
 			EtcdEventsInfo,
 			CloudControllerManagerInfo,
-			GCPKubeControllerManagerInfo,
+			OpenStackKubeControllerManagerInfo,
 			KubeSchedulerInfo,
 			KubeStateMetricsShootInfo,
 			KubeStateMetricsSeedInfo,
@@ -86,11 +86,11 @@ func (a *GCPPodInfo) ToSources() []Source {
 	}
 }
 
-// EgressFromOtherNamespaces returns list of all gcp-specific sources and targets.
-func (a *GCPPodInfo) EgressFromOtherNamespaces() []TargetPod {
+// EgressFromOtherNamespaces returns list of all openstack-specific sources and targets.
+func (a *OpenStackPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
 		{KubeAPIServerInfo, true},
-		{GCPKubeControllerManagerInfo, false},
+		{OpenStackKubeControllerManagerInfo, false},
 		{KubeSchedulerInfo, false},
 		{EtcdMainInfo, false},
 		{EtcdEventsInfo, false},
@@ -106,10 +106,10 @@ func (a *GCPPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	}
 }
 
-func (a *GCPPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
+func (a *OpenStackPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 	denyAll := []*PodInfo{
 		KubeAPIServerInfo,
-		GCPKubeControllerManagerInfo,
+		OpenStackKubeControllerManagerInfo,
 		KubeSchedulerInfo,
 		EtcdMainInfo,
 		EtcdEventsInfo,
@@ -123,5 +123,5 @@ func (a *GCPPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 		PrometheusInfo,
 		AddonManagerInfo,
 	}
-	return NewSource(sourcePod).DenyPod(denyAll...).DenyHost(GCPMetadataServiceHost, ExternalHost, GardenPrometheus)
+	return NewSource(sourcePod).DenyPod(denyAll...).DenyHost(OpenStackMetadataServiceHost, ExternalHost, GardenPrometheus)
 }
