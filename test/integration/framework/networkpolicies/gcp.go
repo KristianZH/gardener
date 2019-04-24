@@ -50,6 +50,8 @@ var (
 )
 
 // GCPPodInfo holds gcp-specific podInfo.
+// +gen-netpoltests=true
+// +gen-packagename=gcp
 type GCPPodInfo struct {
 }
 
@@ -81,6 +83,26 @@ func (a *GCPPodInfo) ToSources() []Source {
 			KubeStateMetricsSeedInfo,
 			MachineControllerManagerInfo,
 		).AllowHost(SeedKubeAPIServer, ExternalHost, GardenPrometheus).Build(),
+	}
+}
+
+// EgressFromOtherNamespaces returns list of all gcp-specific sources and targets.
+func (a *GCPPodInfo) EgressFromOtherNamespaces() []TargetPod {
+	return []TargetPod{
+		{KubeAPIServerInfo, true},
+		{AWSKubeControllerManagerInfo, false},
+		{KubeSchedulerInfo, false},
+		{EtcdMainInfo, false},
+		{EtcdEventsInfo, false},
+		{CloudControllerManagerInfo, false},
+		{ElasticSearchInfo, false},
+		{GrafanaInfo, false},
+		{KibanaInfo, false},
+		{KubeStateMetricsSeedInfo, false},
+		{KubeStateMetricsShootInfo, false},
+		{MachineControllerManagerInfo, false},
+		{PrometheusInfo, false},
+		{AddonManagerInfo, false},
 	}
 }
 

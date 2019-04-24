@@ -12,16 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package networkpolicies_test
+package main
 
 import (
-	"testing"
+	"os"
 
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
+	"github.com/gardener/gardener/test/integration/framework/networkpolicies/netpol-gen/generators"
+	"k8s.io/gengo/args"
+
+	"k8s.io/klog"
 )
 
-func TestSeedNetworkPolicies(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Seed Network Policies Integration Test Suite")
+func main() {
+	klog.InitFlags(nil)
+	arguments := args.Default()
+	if err := arguments.Execute(
+		generators.NameSystems(),
+		generators.DefaultNameSystem(),
+		generators.Packages,
+	); err != nil {
+		klog.Errorf("Error: %v", err)
+		os.Exit(1)
+	}
+	klog.V(2).Info("Completed successfully.")
 }

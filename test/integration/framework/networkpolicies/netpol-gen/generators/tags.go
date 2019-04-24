@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package networkpolicies_test
+package generators
 
 import (
-	"testing"
-
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
+	"k8s.io/gengo/types"
+	"k8s.io/klog"
 )
 
-func TestSeedNetworkPolicies(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Seed Network Policies Integration Test Suite")
+// extractBoolTagOrDie gets the comment-tags for the key and asserts that, if
+// it exists, the value is boolean.  If the tag did not exist, it returns
+// false.
+func extractBoolTagOrDie(key string, lines []string) bool {
+	val, err := types.ExtractSingleBoolCommentTag("+", key, false, lines)
+	if err != nil {
+		klog.Fatalf(err.Error())
+	}
+	return val
 }

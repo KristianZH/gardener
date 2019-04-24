@@ -14,10 +14,32 @@
 
 package networkpolicies
 
-type Target struct {
-	Pod     *PodInfo
+import "fmt"
+
+type TargetHost struct {
 	Host    *Host
 	Allowed bool
+}
+
+func (t *TargetHost) ToString() string {
+	action := "block"
+	if t.Allowed {
+		action = "allow"
+	}
+	return fmt.Sprintf("should %s connection to %q (%s:%d)", action, t.Host.Description, t.Host.HostName, t.Host.Port)
+}
+
+type TargetPod struct {
+	Pod     *PodInfo
+	Allowed bool
+}
+
+func (t *TargetPod) ToString() string {
+	action := "block"
+	if t.Allowed {
+		action = "allow"
+	}
+	return fmt.Sprintf("should %s connection to %s at port %d", action, t.Pod.PodName, t.Pod.Port)
 }
 
 type Host struct {
@@ -27,8 +49,9 @@ type Host struct {
 }
 
 type Source struct {
-	Pod     *PodInfo
-	Targets []Target
+	Pod         *PodInfo
+	TargetPods  []TargetPod
+	TargetHosts []TargetHost
 }
 
 type SourceBuilder struct {
@@ -78,17 +101,17 @@ func (s *SourceBuilder) DenyTo(description, hostname string, port int32) *Source
 func (s *SourceBuilder) conditionalPod(allowed bool, pods ...*PodInfo) *SourceBuilder {
 	for _, pod := range pods {
 		found := false
-		for i, existingTarget := range s.source.Targets {
+		for i, existingTarget := range s.source.TargetPods {
 
 			if existingTarget.Pod != nil && pod.PodName == existingTarget.Pod.PodName && pod.Port == existingTarget.Pod.Port {
-				s.source.Targets[i] = Target{Pod: pod, Allowed: allowed}
+				s.source.TargetPods[i] = TargetPod{Pod: pod, Allowed: allowed}
 				found = true
 				break
 			}
 
 		}
 		if !found {
-			s.source.Targets = append(s.source.Targets, Target{Pod: pod, Allowed: allowed})
+			s.source.TargetPods = append(s.source.TargetPods, TargetPod{Pod: pod, Allowed: allowed})
 		}
 	}
 	return s
@@ -97,17 +120,17 @@ func (s *SourceBuilder) conditionalPod(allowed bool, pods ...*PodInfo) *SourceBu
 func (s *SourceBuilder) conditionalHost(allowed bool, hosts ...*Host) *SourceBuilder {
 	for _, host := range hosts {
 		found := false
-		for i, existingTarget := range s.source.Targets {
+		for i, existingTarget := range s.source.TargetHosts {
 
 			if existingTarget.Host != nil && host.HostName == existingTarget.Host.HostName && host.Port == existingTarget.Host.Port {
-				s.source.Targets[i] = Target{Host: host, Allowed: allowed}
+				s.source.TargetHosts[i] = TargetHost{Host: host, Allowed: allowed}
 				found = true
 				break
 			}
 
 		}
 		if !found {
-			s.source.Targets = append(s.source.Targets, Target{Host: host, Allowed: allowed})
+			s.source.TargetHosts = append(s.source.TargetHosts, TargetHost{Host: host, Allowed: allowed})
 		}
 	}
 	return s

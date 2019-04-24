@@ -12,38 +12,201 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package networkpolicies
+package generators
 
 import (
-	"context"
-	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"reflect"
-	"sync"
-	"time"
+	"path/filepath"
 
-	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
-	"github.com/gardener/gardener/pkg/client/kubernetes"
-	"github.com/gardener/gardener/pkg/logger"
-	. "github.com/gardener/gardener/test/integration/framework"
-	"github.com/gardener/gardener/test/integration/framework/networkpolicies"
-	. "github.com/gardener/gardener/test/integration/shoots"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
-	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/gengo/args"
+	"k8s.io/gengo/generator"
+	"k8s.io/gengo/namer"
+	"k8s.io/gengo/types"
+
+	"k8s.io/klog"
 )
 
+// NameSystems returns the name system used by the generators in this package.
+func NameSystems() namer.NameSystems {
+	return namer.NameSystems{
+		"public":  namer.NewPublicNamer(0),
+		"private": namer.NewPrivateNamer(0),
+		"raw":     namer.NewRawNamer("", nil),
+	}
+}
+
+// DefaultNameSystem returns the default name system for ordering the types to be
+// processed by the generators in this package.
+func DefaultNameSystem() string {
+	return "public"
+}
+
+// Packages makes the sets package definition.
+func Packages(p *generator.Context, arguments *args.GeneratorArgs) generator.Packages {
+	boilerplate, err := arguments.LoadGoBoilerplate()
+	if err != nil {
+		klog.Fatalf("Failed loading boilerplate: %v", err)
+	}
+
+	packages := generator.Packages{}
+
+	for _, y := range p.Order {
+		if y.Kind == types.Struct && extractBoolTagOrDie("gen-netpoltests", y.CommentLines) {
+			values := types.ExtractCommentTags("+", y.CommentLines)["gen-packagename"]
+			if values != nil {
+				typeFQN := y.Name.String()
+				packageName := values[0]
+
+				filterFunc := func(c *generator.Context, t *types.Type) bool {
+					switch t.Kind {
+					case types.Struct:
+						// Only some structs can be keys in a map. This is triggered by the line
+						// // +gen-netpoltests=true
+						return typeFQN == t.Name.String() && extractBoolTagOrDie("gen-netpoltests", t.CommentLines)
+					}
+					return false
+
+				}
+				pkg := &generator.DefaultPackage{
+					PackageName: packageName,
+					PackagePath: filepath.Join(arguments.OutputPackagePath, packageName),
+					HeaderText:  boilerplate,
+					PackageDocumentation: []byte(
+						`// Package has auto-generated cloud-specific network policy tests.
+			`),
+					// GeneratorFunc returns a list of generators. Each generator makes a
+					// single file.
+					GeneratorFunc: func(c *generator.Context) (generators []generator.Generator) {
+						generators = []generator.Generator{
+							// Always generate a "doc.go" file.
+							generator.DefaultGen{OptionalName: "doc"},
+						}
+						// Since we want a file per type that we generate a set for, we
+						// have to provide a function for this.
+						for _, t := range c.Order {
+							generators = append(generators, &genTest{
+								DefaultGen: generator.DefaultGen{
+									OptionalName: fmt.Sprintf("networkpolicy_%s_test", packageName),
+								},
+								outputPackage: arguments.OutputPackagePath,
+								typeToMatch:   t,
+								imports:       generator.NewImportTracker(),
+							})
+						}
+						return generators
+					},
+					FilterFunc: filterFunc,
+				}
+
+				suitePkg := &generator.DefaultPackage{
+					PackageName: fmt.Sprintf("%s_test", packageName),
+					PackagePath: filepath.Join(arguments.OutputPackagePath, packageName),
+					HeaderText:  boilerplate,
+					GeneratorFunc: func(c *generator.Context) []generator.Generator {
+						return []generator.Generator{
+							generator.DefaultGen{
+								OptionalName: "networkpolicies_suite_test",
+								OptionalBody: []byte(suiteBody),
+							},
+						}
+					},
+					FilterFunc: filterFunc,
+				}
+
+				packages = append(packages, pkg, suitePkg)
+
+			}
+		}
+	}
+	return packages
+}
+
+// genTest produces a file with a set for a single type.
+type genTest struct {
+	generator.DefaultGen
+	outputPackage string
+	typeToMatch   *types.Type
+	imports       namer.ImportTracker
+}
+
+// Filter ignores all but one type because we're making a single file per type.
+func (g *genTest) Filter(c *generator.Context, t *types.Type) bool { return t == g.typeToMatch }
+
+func (g *genTest) Namers(c *generator.Context) namer.NameSystems {
+	return namer.NameSystems{
+		"raw": namer.NewRawNamer(g.outputPackage, g.imports),
+	}
+}
+
+func (g *genTest) Imports(c *generator.Context) (imports []string) {
+	return append(g.imports.ImportLines(),
+		"context",
+		"encoding/json",
+		"flag",
+		"fmt",
+		"io",
+		"io/ioutil",
+		"reflect",
+		"sync",
+		"time",
+		`. "github.com/gardener/gardener/test/integration/framework"`,
+		`. "github.com/gardener/gardener/test/integration/shoots"`,
+		`. "github.com/onsi/ginkgo"`,
+		`. "github.com/onsi/gomega"`,
+		"github.com/gardener/gardener/pkg/apis/garden/v1beta1",
+		"github.com/gardener/gardener/pkg/client/kubernetes",
+		"github.com/gardener/gardener/pkg/logger",
+		`networkpolicies "github.com/gardener/gardener/test/integration/framework/networkpolicies"`,
+		"github.com/sirupsen/logrus",
+		"k8s.io/apimachinery/pkg/api/errors",
+		"k8s.io/apimachinery/pkg/labels",
+		"k8s.io/apimachinery/pkg/types",
+		"k8s.io/apimachinery/pkg/util/sets",
+		"sigs.k8s.io/controller-runtime/pkg/client",
+		`corev1 "k8s.io/api/core/v1"`,
+		`metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"`,
+		`networkingv1 "k8s.io/api/networking/v1"`,
+	)
+}
+
+// args constructs arguments for templates. Usage:
+// g.args(t, "key1", value1, "key2", value2, ...)
+//
+// 't' is loaded with the key 'type'.
+//
+// We could use t directly as the argument, but doing it this way makes it easy
+// to mix in additional parameters.
+func (g *genTest) args(t *types.Type, kv ...interface{}) interface{} {
+	m := map[interface{}]interface{}{"type": t}
+	for i := 0; i < len(kv)/2; i++ {
+		m[kv[i*2]] = kv[i*2+1]
+	}
+	return m
+}
+
+// GenerateType makes the body of a file implementing a set for type t.
+func (g *genTest) GenerateType(c *generator.Context, t *types.Type, w io.Writer) error {
+	sw := generator.NewSnippetWriter(w, c, "$", "$")
+	sw.Do(setBody, g.args(t))
+	return nil
+}
+
+var suiteBody = `
+import (
+	"testing"
+
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
+)
+
+func TestNetworkPolicies(t *testing.T) {
+	gomega.RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "Network Policies Integration Test Suite")
+}
+`
+
+var setBody = `
 var (
 	kubeconfig     = flag.String("kubeconfig", "", "the path to the kubeconfig  of the garden cluster that will be used for integration tests")
 	shootName      = flag.String("shootName", "", "the name of the shoot we want to test")
@@ -76,7 +239,7 @@ var _ = Describe("Network Policy Testing", func() {
 		shootTestOperations *GardenerTestOperation
 		shootAppTestLogger  *logrus.Logger
 		sharedResources     networkpolicies.SharedResources
-		cloudAwarePodInfo   = networkpolicies.AWSPodInfo{}
+		cloudAwarePodInfo   = $.type|raw${}
 
 		setGlobals = func(ctx context.Context) {
 
@@ -467,3 +630,4 @@ var _ = Describe("Network Policy Testing", func() {
 	})
 
 })
+`

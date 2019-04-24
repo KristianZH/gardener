@@ -15,6 +15,7 @@
 package networkpolicies
 
 import (
+	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -66,6 +67,8 @@ var (
 )
 
 // AWSPodInfo holds aws-specific podInfo.
+// +gen-netpoltests=true
+// +gen-packagename=aws
 type AWSPodInfo struct {
 }
 
@@ -101,6 +104,27 @@ func (a *AWSPodInfo) ToSources() []Source {
 	}
 }
 
+// ToSources returns list of all aws-specific sources and targets.
+func (a *AWSPodInfo) EgressFromOtherNamespaces() []TargetPod {
+	return []TargetPod{
+		{KubeAPIServerInfo, true},
+		{AWSKubeControllerManagerInfo, false},
+		{KubeSchedulerInfo, false},
+		{EtcdMainInfo, false},
+		{EtcdEventsInfo, false},
+		{CloudControllerManagerInfo, false},
+		{ElasticSearchInfo, false},
+		{GrafanaInfo, false},
+		{KibanaInfo, false},
+		{KubeStateMetricsSeedInfo, false},
+		{KubeStateMetricsShootInfo, false},
+		{MachineControllerManagerInfo, false},
+		{PrometheusInfo, false},
+		{AddonManagerInfo, false},
+		{AWSLBReadvertiserInfo, false},
+	}
+}
+
 func (a *AWSPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 	denyAll := []*PodInfo{
 		KubeAPIServerInfo,
@@ -120,4 +144,9 @@ func (a *AWSPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 		AWSLBReadvertiserInfo,
 	}
 	return NewSource(sourcePod).DenyPod(denyAll...).DenyHost(AWSMetadataServiceHost, ExternalHost, GardenPrometheus)
+}
+
+// Provider returns AWS cloud provider.
+func (a *AWSPodInfo) Provider() v1beta1.CloudProvider {
+	return v1beta1.CloudProviderAWS
 }

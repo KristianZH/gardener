@@ -15,6 +15,7 @@
 package networkpolicies
 
 import (
+	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -285,6 +286,8 @@ var (
 type CloudAwarePodInfo interface {
 	// provider v1beta1.CloudProvider
 	ToSources() []Source
+	EgressFromOtherNamespaces() []TargetPod
+	Provider() v1beta1.CloudProvider
 }
 
 // NamespacedPodInfo holds namespaced PodInfo.
