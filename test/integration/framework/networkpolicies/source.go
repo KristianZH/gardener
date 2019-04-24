@@ -17,7 +17,7 @@ package networkpolicies
 import "fmt"
 
 type TargetHost struct {
-	Host    *Host
+	Host    Host
 	Allowed bool
 }
 
@@ -30,7 +30,7 @@ func (t *TargetHost) ToString() string {
 }
 
 type TargetPod struct {
-	Pod     *PodInfo
+	Pod     PodInfo
 	Allowed bool
 }
 
@@ -103,15 +103,15 @@ func (s *SourceBuilder) conditionalPod(allowed bool, pods ...*PodInfo) *SourceBu
 		found := false
 		for i, existingTarget := range s.source.TargetPods {
 
-			if existingTarget.Pod != nil && pod.PodName == existingTarget.Pod.PodName && pod.Port == existingTarget.Pod.Port {
-				s.source.TargetPods[i] = TargetPod{Pod: pod, Allowed: allowed}
+			if pod.PodName == existingTarget.Pod.PodName && pod.Port == existingTarget.Pod.Port {
+				s.source.TargetPods[i] = TargetPod{Pod: *pod, Allowed: allowed}
 				found = true
 				break
 			}
 
 		}
 		if !found {
-			s.source.TargetPods = append(s.source.TargetPods, TargetPod{Pod: pod, Allowed: allowed})
+			s.source.TargetPods = append(s.source.TargetPods, TargetPod{Pod: *pod, Allowed: allowed})
 		}
 	}
 	return s
@@ -122,15 +122,15 @@ func (s *SourceBuilder) conditionalHost(allowed bool, hosts ...*Host) *SourceBui
 		found := false
 		for i, existingTarget := range s.source.TargetHosts {
 
-			if existingTarget.Host != nil && host.HostName == existingTarget.Host.HostName && host.Port == existingTarget.Host.Port {
-				s.source.TargetHosts[i] = TargetHost{Host: host, Allowed: allowed}
+			if host.HostName == existingTarget.Host.HostName && host.Port == existingTarget.Host.Port {
+				s.source.TargetHosts[i] = TargetHost{Host: *host, Allowed: allowed}
 				found = true
 				break
 			}
 
 		}
 		if !found {
-			s.source.TargetHosts = append(s.source.TargetHosts, TargetHost{Host: host, Allowed: allowed})
+			s.source.TargetHosts = append(s.source.TargetHosts, TargetHost{Host: *host, Allowed: allowed})
 		}
 	}
 	return s

@@ -107,21 +107,21 @@ func (a *AWSPodInfo) ToSources() []Source {
 // ToSources returns list of all aws-specific sources and targets.
 func (a *AWSPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
-		{KubeAPIServerInfo, true},
-		{AWSKubeControllerManagerInfo, false},
-		{KubeSchedulerInfo, false},
-		{EtcdMainInfo, false},
-		{EtcdEventsInfo, false},
-		{CloudControllerManagerInfo, false},
-		{ElasticSearchInfo, false},
-		{GrafanaInfo, false},
-		{KibanaInfo, false},
-		{KubeStateMetricsSeedInfo, false},
-		{KubeStateMetricsShootInfo, false},
-		{MachineControllerManagerInfo, false},
-		{PrometheusInfo, false},
-		{AddonManagerInfo, false},
-		{AWSLBReadvertiserInfo, false},
+		{*KubeAPIServerInfo, true},
+		{*AWSKubeControllerManagerInfo, false},
+		{*KubeSchedulerInfo, false},
+		{*EtcdMainInfo, false},
+		{*EtcdEventsInfo, false},
+		{*CloudControllerManagerInfo, false},
+		{*ElasticSearchInfo, false},
+		{*GrafanaInfo, false},
+		{*KibanaInfo, false},
+		{*KubeStateMetricsSeedInfo, false},
+		{*KubeStateMetricsShootInfo, false},
+		{*MachineControllerManagerInfo, false},
+		{*PrometheusInfo, false},
+		{*AddonManagerInfo, false},
+		{*AWSLBReadvertiserInfo, false},
 	}
 }
 

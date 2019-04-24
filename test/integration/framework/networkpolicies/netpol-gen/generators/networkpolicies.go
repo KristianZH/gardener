@@ -18,6 +18,12 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"reflect"
+	"strings"
+
+	"github.com/huandu/xstrings"
+
+	"github.com/gardener/gardener/test/integration/framework/networkpolicies"
 
 	"k8s.io/gengo/args"
 	"k8s.io/gengo/generator"
@@ -92,6 +98,7 @@ func Packages(p *generator.Context, arguments *args.GeneratorArgs) generator.Pac
 								outputPackage: arguments.OutputPackagePath,
 								typeToMatch:   t,
 								imports:       generator.NewImportTracker(),
+								provider:      &networkpolicies.AWSPodInfo{},
 							})
 						}
 						return generators
@@ -128,6 +135,7 @@ type genTest struct {
 	outputPackage string
 	typeToMatch   *types.Type
 	imports       namer.ImportTracker
+	provider      networkpolicies.CloudAwarePodInfo
 }
 
 // Filter ignores all but one type because we're making a single file per type.
@@ -185,11 +193,79 @@ func (g *genTest) args(t *types.Type, kv ...interface{}) interface{} {
 	return m
 }
 
+func (g *genTest) simpleArgs(kv ...interface{}) interface{} {
+	m := map[interface{}]interface{}{}
+	for i := 0; i < len(kv)/2; i++ {
+		m[kv[i*2]] = kv[i*2+1]
+	}
+	return m
+}
+
 // GenerateType makes the body of a file implementing a set for type t.
 func (g *genTest) GenerateType(c *generator.Context, t *types.Type, w io.Writer) error {
 	sw := generator.NewSnippetWriter(w, c, "$", "$")
 	sw.Do(setBody, g.args(t))
+	g.egressForMirroredPods(sw)
+	sw.Do("})\n", nil)
 	return nil
+}
+
+func (g *genTest) egressForMirroredPods(sw *generator.SnippetWriter) {
+	sw.Do(`
+Context("egress for mirrored pods", func() {
+
+	var (
+		NetworkPolicyTimeout = 30 * time.Second
+		SourcePod *networkpolicies.PodInfo
+
+		// all targets
+`, nil)
+	for k, v := range g.flattenPods() {
+		sw.Do("$.targetName$ = &$.targetPod$\n", g.simpleArgs("targetName", k, "targetPod", v))
+	}
+
+	sw.Do(")\n", nil)
+	for _, s := range g.provider.ToSources() {
+
+		sw.Do(`
+Context("$.podName$", func() {
+
+	BeforeEach(func(){
+		SourcePod = $.sourcePod$
+	})
+
+		`, g.simpleArgs("podName", s.Pod.PodName, "sourcePod", prettyPrint(s.Pod)))
+		for _, t := range s.TargetPods {
+			if !reflect.DeepEqual(t.Pod, *s.Pod) {
+				sw.Do(`
+CIt("$.description$", func(ctx context.Context) {
+		assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo($.targetVarName$, sharedResources.Mirror), $.allowed$)
+	}, NetworkPolicyTimeout)
+`, g.simpleArgs("description", t.ToString(), "targetVarName", targetPodToVariableName(&t), "allowed", t.Allowed))
+			}
+
+		}
+		sw.Do("})\n", nil)
+
+	}
+	sw.Do("})\n", nil)
+}
+
+func (g *genTest) flattenPods() map[string]string {
+	fPods := map[string]string{}
+	for _, s := range g.provider.ToSources() {
+		for _, p := range s.TargetPods {
+			fPodName := targetPodToVariableName(&p)
+			if _, exists := fPods[fPodName]; !exists {
+				fPods[fPodName] = prettyPrint(p.Pod)
+			}
+		}
+	}
+	return fPods
+}
+
+func targetPodToVariableName(p *networkpolicies.TargetPod) string {
+	return xstrings.ToCamelCase(strings.ReplaceAll(fmt.Sprintf("%s%d", p.Pod.PodName, p.Pod.Port), "-", "_"))
 }
 
 var suiteBody = `
@@ -357,7 +433,7 @@ var _ = Describe("Network Policy Testing", func() {
 			pod := getTargetPod(ctx, targetPod)
 			assertConnectToHost(ctx, sourcePod, networkpolicies.TargetHost{
 				Allowed: allowed,
-				Host: &networkpolicies.Host{
+				Host: networkpolicies.Host{
 					HostName: pod.Status.PodIP,
 					Port:     targetPod.Port,
 				},
@@ -568,7 +644,7 @@ var _ = Describe("Network Policy Testing", func() {
 		for _, tp := range cloudAwarePodInfo.EgressFromOtherNamespaces() {
 			tp := tp
 			CIt(tp.ToString(), func(ctx context.Context) {
-				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(tp.Pod, shootTestOperations.ShootSeedNamespace()), tp.Allowed)
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(&tp.Pod, shootTestOperations.ShootSeedNamespace()), tp.Allowed)
 			}, 30*time.Second)
 		}
 	})
@@ -591,33 +667,32 @@ var _ = Describe("Network Policy Testing", func() {
 		}
 	})
 
-	Context("egress for mirrored pods", func() {
+	// Context("egress for mirrored pods", func() {
 
-		var (
-			NetworkPolicyTimeout = 30 * time.Second
-		)
+	// 	var (
+	// 		NetworkPolicyTimeout = 30 * time.Second
+	// 	)
 
-		for _, s := range cloudAwarePodInfo.ToSources() {
-			s := s
-			Context(s.Pod.PodName, func() {
+	// 	for _, s := range cloudAwarePodInfo.ToSources() {
+	// 		s := s
+	// 		Context(s.Pod.PodName, func() {
 
-				for _, t := range s.TargetPods {
-					t := t
-					if t.Pod != nil && !reflect.DeepEqual(t.Pod, s.Pod) {
-						CIt(t.ToString(), func(ctx context.Context) {
-							assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(t.Pod, sharedResources.Mirror), t.Allowed)
-						}, NetworkPolicyTimeout)
-					}
-				}
+	// 			for _, t := range s.TargetPods {
+	// 				t := t
+	// 				if !reflect.DeepEqual(t.Pod, *s.Pod) {
+	// 					CIt(t.ToString(), func(ctx context.Context) {
+	// 						assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(&t.Pod, sharedResources.Mirror), t.Allowed)
+	// 					}, NetworkPolicyTimeout)
+	// 				}
+	// 			}
 
-				for _, t := range s.TargetHosts {
-					t := t
-					CIt(t.ToString(), func(ctx context.Context) {
-						assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), t)
-					}, NetworkPolicyTimeout)
-				}
-			})
-		}
-	})
-})
+	// 			for _, t := range s.TargetHosts {
+	// 				t := t
+	// 				CIt(t.ToString(), func(ctx context.Context) {
+	// 					assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), t)
+	// 				}, NetworkPolicyTimeout)
+	// 			}
+	// 		})
+	// 	}
+	// })
 `

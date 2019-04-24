@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"reflect"
 	"sync"
 	"time"
 
@@ -198,7 +197,7 @@ var _ = Describe("Network Policy Testing", func() {
 			pod := getTargetPod(ctx, targetPod)
 			assertConnectToHost(ctx, sourcePod, networkpolicies.TargetHost{
 				Allowed: allowed,
-				Host: &networkpolicies.Host{
+				Host: networkpolicies.Host{
 					HostName: pod.Status.PodIP,
 					Port:     targetPod.Port,
 				},
@@ -409,7 +408,7 @@ var _ = Describe("Network Policy Testing", func() {
 		for _, tp := range cloudAwarePodInfo.EgressFromOtherNamespaces() {
 			tp := tp
 			CIt(tp.ToString(), func(ctx context.Context) {
-				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(tp.Pod, shootTestOperations.ShootSeedNamespace()), tp.Allowed)
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(networkpolicies.BusyboxInfo, sharedResources.External), networkpolicies.NewNamespacedPodInfo(&tp.Pod, shootTestOperations.ShootSeedNamespace()), tp.Allowed)
 			}, 30*time.Second)
 		}
 	})
@@ -432,32 +431,1382 @@ var _ = Describe("Network Policy Testing", func() {
 		}
 	})
 
+	// Context("egress for mirrored pods", func() {
+
+	// 	var (
+	// 		NetworkPolicyTimeout = 30 * time.Second
+	// 	)
+
+	// 	for _, s := range cloudAwarePodInfo.ToSources() {
+	// 		s := s
+	// 		Context(s.Pod.PodName, func() {
+
+	// 			for _, t := range s.TargetPods {
+	// 				t := t
+	// 				if !reflect.DeepEqual(t.Pod, *s.Pod) {
+	// 					CIt(t.ToString(), func(ctx context.Context) {
+	// 						assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(&t.Pod, sharedResources.Mirror), t.Allowed)
+	// 					}, NetworkPolicyTimeout)
+	// 				}
+	// 			}
+
+	// 			for _, t := range s.TargetHosts {
+	// 				t := t
+	// 				CIt(t.ToString(), func(ctx context.Context) {
+	// 					assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), t)
+	// 				}, NetworkPolicyTimeout)
+	// 			}
+	// 		})
+	// 	}
+	// })
+
 	Context("egress for mirrored pods", func() {
 
 		var (
 			NetworkPolicyTimeout = 30 * time.Second
+			SourcePod            *networkpolicies.PodInfo
+
+			// all targets
+			KibanaLogging5601 = &networkpolicies.PodInfo{
+				PodName:  "kibana-logging",
+				Port:     5601,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "kibana-logging",
+					"garden.sapcloud.io/role": "logging",
+					"role":                    "logging"},
+				ExpectedPolicies: sets.String{
+					"allow-kibana":           sets.Empty{},
+					"allow-to-dns":           sets.Empty{},
+					"allow-to-elasticsearch": sets.Empty{},
+					"deny-all":               sets.Empty{}}}
+			MachineControllerManager10258 = &networkpolicies.PodInfo{
+				PodName:  "machine-controller-manager",
+				Port:     10258,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "kubernetes",
+					"garden.sapcloud.io/role": "controlplane",
+					"role":                    "machine-controller-manager"},
+				ExpectedPolicies: sets.String{
+					"allow-from-prometheus":                       sets.Empty{},
+					"allow-to-dns":                                sets.Empty{},
+					"allow-to-private-except-metadata-cluster":    sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"allow-to-seed-apiserver":                     sets.Empty{},
+					"allow-to-shoot-apiserver":                    sets.Empty{},
+					"deny-all":                                    sets.Empty{}}}
+			EtcdEvents2379 = &networkpolicies.PodInfo{
+				PodName:  "etcd-events",
+				Port:     2379,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "etcd-statefulset",
+					"garden.sapcloud.io/role": "controlplane",
+					"role":                    "events"},
+				ExpectedPolicies: sets.String{
+					"allow-etcd":   sets.Empty{},
+					"allow-to-dns": sets.Empty{},
+					"allow-to-private-except-metadata-cluster":    sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"deny-all": sets.Empty{}}}
+			Grafana3000 = &networkpolicies.PodInfo{
+				PodName:  "grafana",
+				Port:     3000,
+				PortName: "",
+				Labels: labels.Set{
+					"component":               "grafana",
+					"garden.sapcloud.io/role": "monitoring"},
+				ExpectedPolicies: sets.String{
+					"allow-grafana": sets.Empty{},
+					"allow-to-dns":  sets.Empty{},
+					"deny-all":      sets.Empty{}}}
+			KubeStateMetricsSeed8080 = &networkpolicies.PodInfo{
+				PodName:  "kube-state-metrics-seed",
+				Port:     8080,
+				PortName: "",
+				Labels: labels.Set{
+					"component":               "kube-state-metrics",
+					"garden.sapcloud.io/role": "monitoring",
+					"type":                    "seed"},
+				ExpectedPolicies: sets.String{
+					"allow-from-prometheus":   sets.Empty{},
+					"allow-to-dns":            sets.Empty{},
+					"allow-to-seed-apiserver": sets.Empty{},
+					"deny-all":                sets.Empty{}}}
+			KubeStateMetricsShoot8080 = &networkpolicies.PodInfo{
+				PodName:  "kube-state-metrics-shoot",
+				Port:     8080,
+				PortName: "",
+				Labels: labels.Set{
+					"component":               "kube-state-metrics",
+					"garden.sapcloud.io/role": "monitoring",
+					"type":                    "shoot"},
+				ExpectedPolicies: sets.String{
+					"allow-from-prometheus":    sets.Empty{},
+					"allow-to-dns":             sets.Empty{},
+					"allow-to-shoot-apiserver": sets.Empty{},
+					"deny-all":                 sets.Empty{}}}
+			KubeAddonManager9090 = &networkpolicies.PodInfo{
+				PodName:  "kube-addon-manager",
+				Port:     9090,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "kubernetes",
+					"garden.sapcloud.io/role": "controlplane",
+					"role":                    "addon-manager"},
+				ExpectedPolicies: sets.String{
+					"allow-to-dns":             sets.Empty{},
+					"allow-to-shoot-apiserver": sets.Empty{},
+					"deny-all":                 sets.Empty{}}}
+			KubeApiserver443 = &networkpolicies.PodInfo{
+				PodName:  "kube-apiserver",
+				Port:     443,
+				PortName: "",
+				Labels: labels.Set{
+					"app":  "kubernetes",
+					"role": "apiserver"},
+				ExpectedPolicies: sets.String{
+					"allow-from-prometheus":                       sets.Empty{},
+					"allow-kube-apiserver":                        sets.Empty{},
+					"allow-to-dns":                                sets.Empty{},
+					"allow-to-private-except-metadata-cluster":    sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"allow-to-shoot-networks":                     sets.Empty{},
+					"deny-all":                                    sets.Empty{}}}
+			KubeControllerManager10252 = &networkpolicies.PodInfo{
+				PodName:  "kube-controller-manager",
+				Port:     10252,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "kubernetes",
+					"garden.sapcloud.io/role": "controlplane",
+					"role":                    "controller-manager"},
+				ExpectedPolicies: sets.String{
+					"allow-from-prometheus":                       sets.Empty{},
+					"allow-to-dns":                                sets.Empty{},
+					"allow-to-metadata":                           sets.Empty{},
+					"allow-to-private-except-metadata-cluster":    sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"allow-to-shoot-apiserver":                    sets.Empty{},
+					"deny-all":                                    sets.Empty{}}}
+			CloudControllerManager10253 = &networkpolicies.PodInfo{
+				PodName:  "cloud-controller-manager",
+				Port:     10253,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "kubernetes",
+					"garden.sapcloud.io/role": "controlplane",
+					"role":                    "cloud-controller-manager"},
+				ExpectedPolicies: sets.String{
+					"allow-from-prometheus":                       sets.Empty{},
+					"allow-to-dns":                                sets.Empty{},
+					"allow-to-metadata":                           sets.Empty{},
+					"allow-to-private-except-metadata-cluster":    sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"allow-to-shoot-apiserver":                    sets.Empty{},
+					"deny-all":                                    sets.Empty{}}}
+			ElasticsearchLogging9200 = &networkpolicies.PodInfo{
+				PodName:  "elasticsearch-logging",
+				Port:     9200,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "elasticsearch-logging",
+					"garden.sapcloud.io/role": "logging",
+					"role":                    "logging"},
+				ExpectedPolicies: sets.String{
+					"allow-elasticsearch": sets.Empty{},
+					"deny-all":            sets.Empty{}}}
+			Prometheus9090 = &networkpolicies.PodInfo{
+				PodName:  "prometheus",
+				Port:     9090,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "prometheus",
+					"garden.sapcloud.io/role": "monitoring",
+					"role":                    "monitoring"},
+				ExpectedPolicies: sets.String{
+					"allow-prometheus": sets.Empty{},
+					"allow-to-dns":     sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"allow-to-seed-apiserver":                     sets.Empty{},
+					"allow-to-shoot-apiserver":                    sets.Empty{},
+					"allow-to-shoot-networks":                     sets.Empty{},
+					"deny-all":                                    sets.Empty{}}}
+			AwsLbReadvertiser8080 = &networkpolicies.PodInfo{
+				PodName:  "aws-lb-readvertiser",
+				Port:     8080,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "aws-lb-readvertiser",
+					"garden.sapcloud.io/role": "controlplane"},
+				ExpectedPolicies: sets.String{
+					"allow-to-dns": sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"allow-to-shoot-apiserver":                    sets.Empty{},
+					"deny-all":                                    sets.Empty{}}}
+			KubeScheduler10251 = &networkpolicies.PodInfo{
+				PodName:  "kube-scheduler",
+				Port:     10251,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "kubernetes",
+					"garden.sapcloud.io/role": "controlplane",
+					"role":                    "scheduler"},
+				ExpectedPolicies: sets.String{
+					"allow-from-prometheus":    sets.Empty{},
+					"allow-to-dns":             sets.Empty{},
+					"allow-to-shoot-apiserver": sets.Empty{},
+					"deny-all":                 sets.Empty{}}}
+			EtcdMain2379 = &networkpolicies.PodInfo{
+				PodName:  "etcd-main",
+				Port:     2379,
+				PortName: "",
+				Labels: labels.Set{
+					"app":                     "etcd-statefulset",
+					"garden.sapcloud.io/role": "controlplane",
+					"role":                    "main"},
+				ExpectedPolicies: sets.String{
+					"allow-etcd":   sets.Empty{},
+					"allow-to-dns": sets.Empty{},
+					"allow-to-private-except-metadata-cluster":    sets.Empty{},
+					"allow-to-public-except-private-and-metadata": sets.Empty{},
+					"deny-all": sets.Empty{}}}
 		)
 
-		for _, s := range cloudAwarePodInfo.ToSources() {
-			s := s
-			Context(s.Pod.PodName, func() {
+		Context("kube-apiserver", func() {
 
-				for _, t := range s.TargetPods {
-					t := t
-					if t.Pod != nil && !reflect.DeepEqual(t.Pod, s.Pod) {
-						CIt(t.ToString(), func(ctx context.Context) {
-							assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(t.Pod, sharedResources.Mirror), t.Allowed)
-						}, NetworkPolicyTimeout)
-					}
-				}
-
-				for _, t := range s.TargetHosts {
-					t := t
-					CIt(t.ToString(), func(ctx context.Context) {
-						assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(s.Pod, sharedResources.Mirror), t)
-					}, NetworkPolicyTimeout)
-				}
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "kube-apiserver",
+					Port:     443,
+					PortName: "",
+					Labels: labels.Set{
+						"app":  "kubernetes",
+						"role": "apiserver"},
+					ExpectedPolicies: sets.String{
+						"allow-from-prometheus":                       sets.Empty{},
+						"allow-kube-apiserver":                        sets.Empty{},
+						"allow-to-dns":                                sets.Empty{},
+						"allow-to-private-except-metadata-cluster":    sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"allow-to-shoot-networks":                     sets.Empty{},
+						"deny-all":                                    sets.Empty{}}}
 			})
-		}
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("etcd-main", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "etcd-main",
+					Port:     2379,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "etcd-statefulset",
+						"garden.sapcloud.io/role": "controlplane",
+						"role":                    "main"},
+					ExpectedPolicies: sets.String{
+						"allow-etcd":   sets.Empty{},
+						"allow-to-dns": sets.Empty{},
+						"allow-to-private-except-metadata-cluster":    sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"deny-all": sets.Empty{}}}
+			})
+
+			CIt("should block connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("etcd-events", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "etcd-events",
+					Port:     2379,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "etcd-statefulset",
+						"garden.sapcloud.io/role": "controlplane",
+						"role":                    "events"},
+					ExpectedPolicies: sets.String{
+						"allow-etcd":   sets.Empty{},
+						"allow-to-dns": sets.Empty{},
+						"allow-to-private-except-metadata-cluster":    sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"deny-all": sets.Empty{}}}
+			})
+
+			CIt("should block connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("cloud-controller-manager", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "cloud-controller-manager",
+					Port:     10253,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "kubernetes",
+						"garden.sapcloud.io/role": "controlplane",
+						"role":                    "cloud-controller-manager"},
+					ExpectedPolicies: sets.String{
+						"allow-from-prometheus":                       sets.Empty{},
+						"allow-to-dns":                                sets.Empty{},
+						"allow-to-metadata":                           sets.Empty{},
+						"allow-to-private-except-metadata-cluster":    sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"allow-to-shoot-apiserver":                    sets.Empty{},
+						"deny-all":                                    sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("elasticsearch-logging", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "elasticsearch-logging",
+					Port:     9200,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "elasticsearch-logging",
+						"garden.sapcloud.io/role": "logging",
+						"role":                    "logging"},
+					ExpectedPolicies: sets.String{
+						"allow-elasticsearch": sets.Empty{},
+						"deny-all":            sets.Empty{}}}
+			})
+
+			CIt("should block connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("grafana", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "grafana",
+					Port:     3000,
+					PortName: "",
+					Labels: labels.Set{
+						"component":               "grafana",
+						"garden.sapcloud.io/role": "monitoring"},
+					ExpectedPolicies: sets.String{
+						"allow-grafana": sets.Empty{},
+						"allow-to-dns":  sets.Empty{},
+						"deny-all":      sets.Empty{}}}
+			})
+
+			CIt("should block connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("kibana-logging", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "kibana-logging",
+					Port:     5601,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "kibana-logging",
+						"garden.sapcloud.io/role": "logging",
+						"role":                    "logging"},
+					ExpectedPolicies: sets.String{
+						"allow-kibana":           sets.Empty{},
+						"allow-to-dns":           sets.Empty{},
+						"allow-to-elasticsearch": sets.Empty{},
+						"deny-all":               sets.Empty{}}}
+			})
+
+			CIt("should block connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("kube-addon-manager", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "kube-addon-manager",
+					Port:     9090,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "kubernetes",
+						"garden.sapcloud.io/role": "controlplane",
+						"role":                    "addon-manager"},
+					ExpectedPolicies: sets.String{
+						"allow-to-dns":             sets.Empty{},
+						"allow-to-shoot-apiserver": sets.Empty{},
+						"deny-all":                 sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("kube-controller-manager", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "kube-controller-manager",
+					Port:     10252,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "kubernetes",
+						"garden.sapcloud.io/role": "controlplane",
+						"role":                    "controller-manager"},
+					ExpectedPolicies: sets.String{
+						"allow-from-prometheus":                       sets.Empty{},
+						"allow-to-dns":                                sets.Empty{},
+						"allow-to-metadata":                           sets.Empty{},
+						"allow-to-private-except-metadata-cluster":    sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"allow-to-shoot-apiserver":                    sets.Empty{},
+						"deny-all":                                    sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("kube-scheduler", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "kube-scheduler",
+					Port:     10251,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "kubernetes",
+						"garden.sapcloud.io/role": "controlplane",
+						"role":                    "scheduler"},
+					ExpectedPolicies: sets.String{
+						"allow-from-prometheus":    sets.Empty{},
+						"allow-to-dns":             sets.Empty{},
+						"allow-to-shoot-apiserver": sets.Empty{},
+						"deny-all":                 sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("kube-state-metrics-shoot", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "kube-state-metrics-shoot",
+					Port:     8080,
+					PortName: "",
+					Labels: labels.Set{
+						"component":               "kube-state-metrics",
+						"garden.sapcloud.io/role": "monitoring",
+						"type":                    "shoot"},
+					ExpectedPolicies: sets.String{
+						"allow-from-prometheus":    sets.Empty{},
+						"allow-to-dns":             sets.Empty{},
+						"allow-to-shoot-apiserver": sets.Empty{},
+						"deny-all":                 sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("kube-state-metrics-seed", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "kube-state-metrics-seed",
+					Port:     8080,
+					PortName: "",
+					Labels: labels.Set{
+						"component":               "kube-state-metrics",
+						"garden.sapcloud.io/role": "monitoring",
+						"type":                    "seed"},
+					ExpectedPolicies: sets.String{
+						"allow-from-prometheus":   sets.Empty{},
+						"allow-to-dns":            sets.Empty{},
+						"allow-to-seed-apiserver": sets.Empty{},
+						"deny-all":                sets.Empty{}}}
+			})
+
+			CIt("should block connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("machine-controller-manager", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "machine-controller-manager",
+					Port:     10258,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "kubernetes",
+						"garden.sapcloud.io/role": "controlplane",
+						"role":                    "machine-controller-manager"},
+					ExpectedPolicies: sets.String{
+						"allow-from-prometheus":                       sets.Empty{},
+						"allow-to-dns":                                sets.Empty{},
+						"allow-to-private-except-metadata-cluster":    sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"allow-to-seed-apiserver":                     sets.Empty{},
+						"allow-to-shoot-apiserver":                    sets.Empty{},
+						"deny-all":                                    sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("aws-lb-readvertiser", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "aws-lb-readvertiser",
+					Port:     8080,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "aws-lb-readvertiser",
+						"garden.sapcloud.io/role": "controlplane"},
+					ExpectedPolicies: sets.String{
+						"allow-to-dns": sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"allow-to-shoot-apiserver":                    sets.Empty{},
+						"deny-all":                                    sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to prometheus at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Prometheus9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
+
+		Context("prometheus", func() {
+
+			BeforeEach(func() {
+				SourcePod = &networkpolicies.PodInfo{
+					PodName:  "prometheus",
+					Port:     9090,
+					PortName: "",
+					Labels: labels.Set{
+						"app":                     "prometheus",
+						"garden.sapcloud.io/role": "monitoring",
+						"role":                    "monitoring"},
+					ExpectedPolicies: sets.String{
+						"allow-prometheus": sets.Empty{},
+						"allow-to-dns":     sets.Empty{},
+						"allow-to-public-except-private-and-metadata": sets.Empty{},
+						"allow-to-seed-apiserver":                     sets.Empty{},
+						"allow-to-shoot-apiserver":                    sets.Empty{},
+						"allow-to-shoot-networks":                     sets.Empty{},
+						"deny-all":                                    sets.Empty{}}}
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeApiserver443, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to kube-controller-manager at port 10252", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeControllerManager10252, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to kube-scheduler at port 10251", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeScheduler10251, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to etcd-main at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdMain2379, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to etcd-events at port 2379", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(EtcdEvents2379, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to cloud-controller-manager at port 10253", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(CloudControllerManager10253, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to elasticsearch-logging at port 9200", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(ElasticsearchLogging9200, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to grafana at port 3000", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(Grafana3000, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kibana-logging at port 5601", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KibanaLogging5601, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to kube-state-metrics-seed at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsSeed8080, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to kube-state-metrics-shoot at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeStateMetricsShoot8080, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should allow connection to machine-controller-manager at port 10258", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(MachineControllerManager10258, sharedResources.Mirror), true)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to kube-addon-manager at port 9090", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(KubeAddonManager9090, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+
+			CIt("should block connection to aws-lb-readvertiser at port 8080", func(ctx context.Context) {
+				assertConnectToPod(ctx, networkpolicies.NewNamespacedPodInfo(SourcePod, sharedResources.Mirror), networkpolicies.NewNamespacedPodInfo(AwsLbReadvertiser8080, sharedResources.Mirror), false)
+			}, NetworkPolicyTimeout)
+		})
 	})
 })

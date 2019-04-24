@@ -26,6 +26,9 @@ import (
 func main() {
 	klog.InitFlags(nil)
 	arguments := args.Default()
+
+	generators.GetRegistry()
+
 	if err := arguments.Execute(
 		generators.NameSystems(),
 		generators.DefaultNameSystem(),
@@ -35,4 +38,5 @@ func main() {
 		os.Exit(1)
 	}
 	klog.V(2).Info("Completed successfully.")
+
 }

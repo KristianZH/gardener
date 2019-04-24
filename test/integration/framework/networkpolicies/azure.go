@@ -89,20 +89,20 @@ func (a *AzurePodInfo) ToSources() []Source {
 // EgressFromOtherNamespaces returns list of all azure-specific sources and targets.
 func (a *AzurePodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
-		{KubeAPIServerInfo, true},
-		{AzureKubeControllerManagerInfo, false},
-		{KubeSchedulerInfo, false},
-		{EtcdMainInfo, false},
-		{EtcdEventsInfo, false},
-		{CloudControllerManagerInfo, false},
-		{ElasticSearchInfo, false},
-		{GrafanaInfo, false},
-		{KibanaInfo, false},
-		{KubeStateMetricsSeedInfo, false},
-		{KubeStateMetricsShootInfo, false},
-		{MachineControllerManagerInfo, false},
-		{PrometheusInfo, false},
-		{AddonManagerInfo, false},
+		{*KubeAPIServerInfo, true},
+		{*AzureKubeControllerManagerInfo, false},
+		{*KubeSchedulerInfo, false},
+		{*EtcdMainInfo, false},
+		{*EtcdEventsInfo, false},
+		{*CloudControllerManagerInfo, false},
+		{*ElasticSearchInfo, false},
+		{*GrafanaInfo, false},
+		{*KibanaInfo, false},
+		{*KubeStateMetricsSeedInfo, false},
+		{*KubeStateMetricsShootInfo, false},
+		{*MachineControllerManagerInfo, false},
+		{*PrometheusInfo, false},
+		{*AddonManagerInfo, false},
 	}
 }
 

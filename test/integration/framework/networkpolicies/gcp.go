@@ -89,20 +89,20 @@ func (a *GCPPodInfo) ToSources() []Source {
 // EgressFromOtherNamespaces returns list of all gcp-specific sources and targets.
 func (a *GCPPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
-		{KubeAPIServerInfo, true},
-		{GCPKubeControllerManagerInfo, false},
-		{KubeSchedulerInfo, false},
-		{EtcdMainInfo, false},
-		{EtcdEventsInfo, false},
-		{CloudControllerManagerInfo, false},
-		{ElasticSearchInfo, false},
-		{GrafanaInfo, false},
-		{KibanaInfo, false},
-		{KubeStateMetricsSeedInfo, false},
-		{KubeStateMetricsShootInfo, false},
-		{MachineControllerManagerInfo, false},
-		{PrometheusInfo, false},
-		{AddonManagerInfo, false},
+		{*KubeAPIServerInfo, true},
+		{*GCPKubeControllerManagerInfo, false},
+		{*KubeSchedulerInfo, false},
+		{*EtcdMainInfo, false},
+		{*EtcdEventsInfo, false},
+		{*CloudControllerManagerInfo, false},
+		{*ElasticSearchInfo, false},
+		{*GrafanaInfo, false},
+		{*KibanaInfo, false},
+		{*KubeStateMetricsSeedInfo, false},
+		{*KubeStateMetricsShootInfo, false},
+		{*MachineControllerManagerInfo, false},
+		{*PrometheusInfo, false},
+		{*AddonManagerInfo, false},
 	}
 }
 

@@ -89,20 +89,20 @@ func (a *OpenStackPodInfo) ToSources() []Source {
 // EgressFromOtherNamespaces returns list of all openstack-specific sources and targets.
 func (a *OpenStackPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
-		{KubeAPIServerInfo, true},
-		{OpenStackKubeControllerManagerInfo, false},
-		{KubeSchedulerInfo, false},
-		{EtcdMainInfo, false},
-		{EtcdEventsInfo, false},
-		{CloudControllerManagerInfo, false},
-		{ElasticSearchInfo, false},
-		{GrafanaInfo, false},
-		{KibanaInfo, false},
-		{KubeStateMetricsSeedInfo, false},
-		{KubeStateMetricsShootInfo, false},
-		{MachineControllerManagerInfo, false},
-		{PrometheusInfo, false},
-		{AddonManagerInfo, false},
+		{*KubeAPIServerInfo, true},
+		{*OpenStackKubeControllerManagerInfo, false},
+		{*KubeSchedulerInfo, false},
+		{*EtcdMainInfo, false},
+		{*EtcdEventsInfo, false},
+		{*CloudControllerManagerInfo, false},
+		{*ElasticSearchInfo, false},
+		{*GrafanaInfo, false},
+		{*KibanaInfo, false},
+		{*KubeStateMetricsSeedInfo, false},
+		{*KubeStateMetricsShootInfo, false},
+		{*MachineControllerManagerInfo, false},
+		{*PrometheusInfo, false},
+		{*AddonManagerInfo, false},
 	}
 }
 
