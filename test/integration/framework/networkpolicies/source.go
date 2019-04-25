@@ -26,7 +26,7 @@ func (t *TargetHost) ToString() string {
 	if t.Allowed {
 		action = "allow"
 	}
-	return fmt.Sprintf("should %s connection to %q (%s:%d)", action, t.Host.Description, t.Host.HostName, t.Host.Port)
+	return fmt.Sprintf("should %s connection to %s (%s:%d)", action, t.Host.Description, t.Host.HostName, t.Host.Port)
 }
 
 type TargetPod struct {

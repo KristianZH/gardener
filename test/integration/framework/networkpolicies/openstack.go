@@ -15,6 +15,7 @@
 package networkpolicies
 
 import (
+	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -124,4 +125,9 @@ func (a *OpenStackPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 		AddonManagerInfo,
 	}
 	return NewSource(sourcePod).DenyPod(denyAll...).DenyHost(OpenStackMetadataServiceHost, ExternalHost, GardenPrometheus)
+}
+
+// Provider returns OpenStack cloud provider.
+func (a *OpenStackPodInfo) Provider() v1beta1.CloudProvider {
+	return v1beta1.CloudProviderOpenStack
 }
