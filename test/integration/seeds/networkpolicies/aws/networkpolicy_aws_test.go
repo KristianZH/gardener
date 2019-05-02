@@ -217,8 +217,8 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
 				"allow-to-metadata":                           sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
 		KubeStateMetricsShoot8080 = &networkpolicies.PodInfo{
@@ -245,7 +245,7 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-prometheus": sets.Empty{},
 				"allow-to-dns":     sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-seed-apiserver":                     sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"allow-to-shoot-networks":                     sets.Empty{},
@@ -259,7 +259,7 @@ var _ = Describe("Network Policy Testing", func() {
 				"garden.sapcloud.io/role": "controlplane"},
 			ExpectedPolicies: sets.String{
 				"allow-to-dns": sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
 		GardenPrometheusPort80 = &networkpolicies.TargetHost{
@@ -304,8 +304,8 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-etcd":   sets.Empty{},
 				"allow-to-dns": sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"deny-all": sets.Empty{}}}
 		ElasticsearchLogging9200 = &networkpolicies.PodInfo{
 			PodName:  "elasticsearch-logging",
@@ -360,8 +360,8 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-kube-apiserver":                        sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-shoot-networks":                     sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
 		EtcdMain2379 = &networkpolicies.PodInfo{
@@ -375,8 +375,8 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-etcd":   sets.Empty{},
 				"allow-to-dns": sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"deny-all": sets.Empty{}}}
 		CloudControllerManager10253 = &networkpolicies.PodInfo{
 			PodName:  "cloud-controller-manager",
@@ -390,8 +390,8 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
 				"allow-to-metadata":                           sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
 		Grafana3000 = &networkpolicies.PodInfo{
@@ -429,8 +429,8 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-seed-apiserver":                     sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}

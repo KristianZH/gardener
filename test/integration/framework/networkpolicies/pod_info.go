@@ -47,8 +47,8 @@ var (
 			"allow-from-prometheus",
 			"allow-kube-apiserver",
 			"allow-to-dns",
-			"allow-to-public-except-private-and-metadata",
-			"allow-to-private-except-metadata-cluster",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
 			"allow-to-shoot-networks",
 			"deny-all",
 		),
@@ -94,8 +94,8 @@ var (
 		ExpectedPolicies: sets.NewString(
 			"allow-etcd",
 			"allow-to-dns",
-			"allow-to-public-except-private-and-metadata",
-			"allow-to-private-except-metadata-cluster",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
 			"deny-all",
 		),
 	}
@@ -110,8 +110,8 @@ var (
 		ExpectedPolicies: sets.NewString(
 			"allow-etcd",
 			"allow-to-dns",
-			"allow-to-public-except-private-and-metadata",
-			"allow-to-private-except-metadata-cluster",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
 			"deny-all",
 		),
 	}
@@ -127,8 +127,8 @@ var (
 			"allow-from-prometheus",
 			"allow-to-shoot-apiserver",
 			"allow-to-dns",
-			"allow-to-public-except-private-and-metadata",
-			"allow-to-private-except-metadata-cluster",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
 			"allow-to-metadata",
 			"deny-all",
 		),
@@ -215,8 +215,8 @@ var (
 		ExpectedPolicies: sets.NewString(
 			"allow-from-prometheus",
 			"allow-to-dns",
-			"allow-to-public-except-private-and-metadata",
-			"allow-to-private-except-metadata-cluster",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
 			"allow-to-seed-apiserver",
 			"allow-to-shoot-apiserver",
 			"deny-all",
@@ -233,7 +233,7 @@ var (
 		ExpectedPolicies: sets.NewString(
 			"allow-prometheus",
 			"allow-to-dns",
-			"allow-to-public-except-private-and-metadata",
+			"allow-to-public-networks",
 			"allow-to-seed-apiserver",
 			"allow-to-shoot-apiserver",
 			"allow-to-shoot-networks",

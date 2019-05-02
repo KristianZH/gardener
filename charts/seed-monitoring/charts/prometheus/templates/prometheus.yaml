@@ -59,7 +59,7 @@ spec:
         app: prometheus
         role: monitoring
         networking.gardener.cloud/to-dns: allowed
-        networking.gardener.cloud/to-public-except-private-medatadata: allowed
+        networking.gardener.cloud/to-public-networks: allowed
         networking.gardener.cloud/to-shoot-networks: allowed
         networking.gardener.cloud/to-shoot-apiserver: allowed
         networking.gardener.cloud/to-seed-apiserver: allowed

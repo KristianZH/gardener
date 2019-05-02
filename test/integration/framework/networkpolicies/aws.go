@@ -32,8 +32,8 @@ var (
 			"role":                    "controller-manager",
 		},
 		ExpectedPolicies: sets.NewString(
-			"allow-to-public-except-private-and-metadata",
-			"allow-to-private-except-metadata-cluster",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
 			"allow-from-prometheus",
 			"allow-to-dns",
 			"allow-to-metadata",
@@ -51,7 +51,7 @@ var (
 			"garden.sapcloud.io/role": "controlplane",
 		},
 		ExpectedPolicies: sets.NewString(
-			"allow-to-public-except-private-and-metadata",
+			"allow-to-public-networks",
 			"allow-to-dns",
 			"allow-to-shoot-apiserver",
 			"deny-all",

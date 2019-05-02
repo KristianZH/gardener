@@ -29,8 +29,8 @@ spec:
         app: kubernetes
         role: apiserver
         networking.gardener.cloud/to-dns: allowed
-        networking.gardener.cloud/to-public-except-private-medatadata: allowed
-        networking.gardener.cloud/to-private-except-metadata-cluster: allowed
+        networking.gardener.cloud/to-public-networks: allowed
+        networking.gardener.cloud/to-private-networks: allowed
         networking.gardener.cloud/to-shoot-networks: allowed
         networking.gardener.cloud/from-prometheus: allowed
     spec:

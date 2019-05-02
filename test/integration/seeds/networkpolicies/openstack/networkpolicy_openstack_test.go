@@ -216,8 +216,8 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-kube-apiserver":                        sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-shoot-networks":                     sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
 		KubeAddonManager9090 = &networkpolicies.PodInfo{
@@ -275,8 +275,8 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-seed-apiserver":                     sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
@@ -291,7 +291,7 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-prometheus": sets.Empty{},
 				"allow-to-dns":     sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-seed-apiserver":                     sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"allow-to-shoot-networks":                     sets.Empty{},
@@ -314,8 +314,8 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
 				"allow-to-metadata":                           sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
 		ElasticsearchLogging9200 = &networkpolicies.PodInfo{
@@ -357,8 +357,8 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-etcd":   sets.Empty{},
 				"allow-to-dns": sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"deny-all": sets.Empty{}}}
 		KubeStateMetricsSeed8080 = &networkpolicies.PodInfo{
 			PodName:  "kube-state-metrics-seed",
@@ -391,8 +391,8 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-from-prometheus":                       sets.Empty{},
 				"allow-to-dns":                                sets.Empty{},
 				"allow-to-metadata":                           sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"allow-to-shoot-apiserver":                    sets.Empty{},
 				"deny-all":                                    sets.Empty{}}}
 		KubeScheduler10251 = &networkpolicies.PodInfo{
@@ -419,8 +419,8 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-etcd":   sets.Empty{},
 				"allow-to-dns": sets.Empty{},
-				"allow-to-private-except-metadata-cluster":    sets.Empty{},
-				"allow-to-public-except-private-and-metadata": sets.Empty{},
+				"allow-to-private-networks":    sets.Empty{},
+				"allow-to-public-networks": sets.Empty{},
 				"deny-all": sets.Empty{}}}
 	)
 

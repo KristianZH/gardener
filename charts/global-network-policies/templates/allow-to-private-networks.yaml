@@ -3,15 +3,17 @@ kind: NetworkPolicy
 metadata:
   annotations:
     gardener.cloud/description: |
-      Allows Egress from pods labeled with 'networking.gardener.cloud/to-private-except-metadata-cluster=allowed'
-      to the Private networks (RFC1918), Carrier-grade NAT (RFC 6598) except for CloudProvider's specific metadata service IP,
-      Seed and Shoot networks.
-  name: allow-to-private-except-metadata-cluster
+      Allows Egress from pods labeled with 'networking.gardener.cloud/to-private-networks=allowed'
+      to the Private networks (RFC1918), Carrier-grade NAT (RFC 6598) except for
+      - CloudProvider's specific metadata service IP
+      - Seed networks
+      - Shoot networks
+  name: allow-to-private-networks
   namespace: {{ .Release.Namespace }}
 spec:
   podSelector:
     matchLabels:
-      networking.gardener.cloud/to-private-except-metadata-cluster: allowed
+      networking.gardener.cloud/to-private-networks: allowed
   egress:
   - to:
 {{- range $i, $network := .Values.privateNetworks }}
