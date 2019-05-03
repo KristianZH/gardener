@@ -27,11 +27,13 @@ func defaultRegistry() map[string]networkpolicies.CloudAwarePodInfo {
 	azure := networkpolicies.AzurePodInfo{}
 	gcp := networkpolicies.GCPPodInfo{}
 	openstack := networkpolicies.OpenStackPodInfo{}
+	alicloud := networkpolicies.AlicloudPodInfo{}
 	return map[string]networkpolicies.CloudAwarePodInfo{
 		toKey(aws):       &aws,
 		toKey(azure):     &azure,
 		toKey(gcp):       &gcp,
 		toKey(openstack): &openstack,
+		toKey(alicloud):  &alicloud,
 	}
 }
 
@@ -43,7 +45,7 @@ func toKey(in interface{}) string {
 	return fmt.Sprintf("%s.%s", typeof.PkgPath(), typeof.Name())
 }
 
-// Poor-man's struct printer
+// Poor-man's pretty struct printer
 func prettyPrint(i interface{}) string {
 	s1 := strings.ReplaceAll(fmt.Sprintf("%#v", i), ", ", ",\n")
 	s2 := strings.ReplaceAll(s1, "{", "{\n")

@@ -205,6 +205,50 @@ var _ = Describe("Network Policy Testing", func() {
 		}
 
 		// generated targets
+		KubeApiserver443 = &networkpolicies.PodInfo{
+			PodName:  "kube-apiserver",
+			Port:     443,
+			PortName: "",
+			Labels: labels.Set{
+				"app":  "kubernetes",
+				"role": "apiserver"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":     sets.Empty{},
+				"allow-kube-apiserver":      sets.Empty{},
+				"allow-to-dns":              sets.Empty{},
+				"allow-to-private-networks": sets.Empty{},
+				"allow-to-public-networks":  sets.Empty{},
+				"allow-to-shoot-networks":   sets.Empty{},
+				"deny-all":                  sets.Empty{}}}
+		KubeControllerManager10252 = &networkpolicies.PodInfo{
+			PodName:  "kube-controller-manager",
+			Port:     10252,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "kubernetes",
+				"garden.sapcloud.io/role": "controlplane",
+				"role":                    "controller-manager"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":     sets.Empty{},
+				"allow-to-dns":              sets.Empty{},
+				"allow-to-metadata":         sets.Empty{},
+				"allow-to-private-networks": sets.Empty{},
+				"allow-to-public-networks":  sets.Empty{},
+				"allow-to-shoot-apiserver":  sets.Empty{},
+				"deny-all":                  sets.Empty{}}}
+		KubeScheduler10251 = &networkpolicies.PodInfo{
+			PodName:  "kube-scheduler",
+			Port:     10251,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "kubernetes",
+				"garden.sapcloud.io/role": "controlplane",
+				"role":                    "scheduler"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":    sets.Empty{},
+				"allow-to-dns":             sets.Empty{},
+				"allow-to-shoot-apiserver": sets.Empty{},
+				"deny-all":                 sets.Empty{}}}
 		CloudControllerManager10253 = &networkpolicies.PodInfo{
 			PodName:  "cloud-controller-manager",
 			Port:     10253,
@@ -221,40 +265,28 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-public-networks":  sets.Empty{},
 				"allow-to-shoot-apiserver":  sets.Empty{},
 				"deny-all":                  sets.Empty{}}}
-		KubeStateMetricsSeed8080 = &networkpolicies.PodInfo{
-			PodName:  "kube-state-metrics-seed",
-			Port:     8080,
+		ElasticsearchLogging9200 = &networkpolicies.PodInfo{
+			PodName:  "elasticsearch-logging",
+			Port:     9200,
 			PortName: "",
 			Labels: labels.Set{
-				"component":               "kube-state-metrics",
-				"garden.sapcloud.io/role": "monitoring",
-				"type":                    "seed"},
+				"app":                     "elasticsearch-logging",
+				"garden.sapcloud.io/role": "logging",
+				"role":                    "logging"},
 			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":   sets.Empty{},
-				"allow-to-dns":            sets.Empty{},
-				"allow-to-seed-apiserver": sets.Empty{},
-				"deny-all":                sets.Empty{}}}
-		MetadataservicePort80 = &networkpolicies.TargetHost{
-			Host: networkpolicies.Host{
-				Description: "Metadata service",
-				HostName:    "169.254.169.254",
-				Port:        80},
-			Allowed: false}
-		KubeApiserver443 = &networkpolicies.PodInfo{
-			PodName:  "kube-apiserver",
-			Port:     443,
+				"allow-elasticsearch": sets.Empty{},
+				"deny-all":            sets.Empty{}}}
+		Grafana3000 = &networkpolicies.PodInfo{
+			PodName:  "grafana",
+			Port:     3000,
 			PortName: "",
 			Labels: labels.Set{
-				"app":  "kubernetes",
-				"role": "apiserver"},
+				"component":               "grafana",
+				"garden.sapcloud.io/role": "monitoring"},
 			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":     sets.Empty{},
-				"allow-kube-apiserver":      sets.Empty{},
-				"allow-to-dns":              sets.Empty{},
-				"allow-to-private-networks": sets.Empty{},
-				"allow-to-public-networks":  sets.Empty{},
-				"allow-to-shoot-networks":   sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
+				"allow-grafana": sets.Empty{},
+				"allow-to-dns":  sets.Empty{},
+				"deny-all":      sets.Empty{}}}
 		EtcdEvents2379 = &networkpolicies.PodInfo{
 			PodName:  "etcd-events",
 			Port:     2379,
@@ -285,82 +317,6 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-seed-apiserver":   sets.Empty{},
 				"allow-to-shoot-apiserver":  sets.Empty{},
 				"deny-all":                  sets.Empty{}}}
-		GardenPrometheusPort80 = &networkpolicies.TargetHost{
-			Host: networkpolicies.Host{
-				Description: "Garden Prometheus",
-				HostName:    "prometheus-web.garden",
-				Port:        80},
-			Allowed: false}
-		SeedKubeAPIServerPort443 = &networkpolicies.TargetHost{
-			Host: networkpolicies.Host{
-				Description: "Seed Kube APIServer",
-				HostName:    "kubernetes.default",
-				Port:        443},
-			Allowed: true}
-		KubeControllerManager10252 = &networkpolicies.PodInfo{
-			PodName:  "kube-controller-manager",
-			Port:     10252,
-			PortName: "",
-			Labels: labels.Set{
-				"app":                     "kubernetes",
-				"garden.sapcloud.io/role": "controlplane",
-				"role":                    "controller-manager"},
-			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":     sets.Empty{},
-				"allow-to-dns":              sets.Empty{},
-				"allow-to-metadata":         sets.Empty{},
-				"allow-to-private-networks": sets.Empty{},
-				"allow-to-public-networks":  sets.Empty{},
-				"allow-to-shoot-apiserver":  sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
-		KubeScheduler10251 = &networkpolicies.PodInfo{
-			PodName:  "kube-scheduler",
-			Port:     10251,
-			PortName: "",
-			Labels: labels.Set{
-				"app":                     "kubernetes",
-				"garden.sapcloud.io/role": "controlplane",
-				"role":                    "scheduler"},
-			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":    sets.Empty{},
-				"allow-to-dns":             sets.Empty{},
-				"allow-to-shoot-apiserver": sets.Empty{},
-				"deny-all":                 sets.Empty{}}}
-		ElasticsearchLogging9200 = &networkpolicies.PodInfo{
-			PodName:  "elasticsearch-logging",
-			Port:     9200,
-			PortName: "",
-			Labels: labels.Set{
-				"app":                     "elasticsearch-logging",
-				"garden.sapcloud.io/role": "logging",
-				"role":                    "logging"},
-			ExpectedPolicies: sets.String{
-				"allow-elasticsearch": sets.Empty{},
-				"deny-all":            sets.Empty{}}}
-		Grafana3000 = &networkpolicies.PodInfo{
-			PodName:  "grafana",
-			Port:     3000,
-			PortName: "",
-			Labels: labels.Set{
-				"component":               "grafana",
-				"garden.sapcloud.io/role": "monitoring"},
-			ExpectedPolicies: sets.String{
-				"allow-grafana": sets.Empty{},
-				"allow-to-dns":  sets.Empty{},
-				"deny-all":      sets.Empty{}}}
-		KubeStateMetricsShoot8080 = &networkpolicies.PodInfo{
-			PodName:  "kube-state-metrics-shoot",
-			Port:     8080,
-			PortName: "",
-			Labels: labels.Set{
-				"component":               "kube-state-metrics",
-				"garden.sapcloud.io/role": "monitoring",
-				"type":                    "shoot"},
-			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":    sets.Empty{},
-				"allow-to-dns":             sets.Empty{},
-				"allow-to-shoot-apiserver": sets.Empty{},
-				"deny-all":                 sets.Empty{}}}
 		EtcdMain2379 = &networkpolicies.PodInfo{
 			PodName:  "etcd-main",
 			Port:     2379,
@@ -375,6 +331,31 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-private-networks": sets.Empty{},
 				"allow-to-public-networks":  sets.Empty{},
 				"deny-all":                  sets.Empty{}}}
+		KubeStateMetricsShoot8080 = &networkpolicies.PodInfo{
+			PodName:  "kube-state-metrics-shoot",
+			Port:     8080,
+			PortName: "",
+			Labels: labels.Set{
+				"component":               "kube-state-metrics",
+				"garden.sapcloud.io/role": "monitoring",
+				"type":                    "shoot"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":    sets.Empty{},
+				"allow-to-dns":             sets.Empty{},
+				"allow-to-shoot-apiserver": sets.Empty{},
+				"deny-all":                 sets.Empty{}}}
+		GardenPrometheusPort80 = &networkpolicies.TargetHost{
+			Host: networkpolicies.Host{
+				Description: "Garden Prometheus",
+				HostName:    "prometheus-web.garden",
+				Port:        80},
+			Allowed: false}
+		SeedKubeAPIServerPort443 = &networkpolicies.TargetHost{
+			Host: networkpolicies.Host{
+				Description: "Seed Kube APIServer",
+				HostName:    "kubernetes.default",
+				Port:        443},
+			Allowed: true}
 		KibanaLogging5601 = &networkpolicies.PodInfo{
 			PodName:  "kibana-logging",
 			Port:     5601,
@@ -388,6 +369,19 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-dns":           sets.Empty{},
 				"allow-to-elasticsearch": sets.Empty{},
 				"deny-all":               sets.Empty{}}}
+		KubeStateMetricsSeed8080 = &networkpolicies.PodInfo{
+			PodName:  "kube-state-metrics-seed",
+			Port:     8080,
+			PortName: "",
+			Labels: labels.Set{
+				"component":               "kube-state-metrics",
+				"garden.sapcloud.io/role": "monitoring",
+				"type":                    "seed"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":   sets.Empty{},
+				"allow-to-dns":            sets.Empty{},
+				"allow-to-seed-apiserver": sets.Empty{},
+				"deny-all":                sets.Empty{}}}
 		Prometheus9090 = &networkpolicies.PodInfo{
 			PodName:  "prometheus",
 			Port:     9090,
@@ -416,6 +410,12 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-dns":             sets.Empty{},
 				"allow-to-shoot-apiserver": sets.Empty{},
 				"deny-all":                 sets.Empty{}}}
+		MetadataservicePort80 = &networkpolicies.TargetHost{
+			Host: networkpolicies.Host{
+				Description: "Metadata service",
+				HostName:    "169.254.169.254",
+				Port:        80},
+			Allowed: false}
 		ExternalhostPort53 = &networkpolicies.TargetHost{
 			Host: networkpolicies.Host{
 				Description: "External host",
