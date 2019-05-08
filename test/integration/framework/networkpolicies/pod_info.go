@@ -94,6 +94,7 @@ var (
 			"allow-to-shoot-apiserver",
 			"deny-all",
 		),
+		ShootVersionConstraint: ">= 1.13",
 	}
 
 	// KubeControllerManagerInfoSecured points to generic kube-controller-manager.
@@ -114,6 +115,7 @@ var (
 			"allow-to-shoot-apiserver",
 			"deny-all",
 		),
+		ShootVersionConstraint: "< 1.13",
 	}
 
 	KubeSchedulerInfoSecured = &PodInfo{
