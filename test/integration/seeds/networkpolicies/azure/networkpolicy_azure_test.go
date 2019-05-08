@@ -122,6 +122,9 @@ var _ = Describe("Network Policy Testing", func() {
 		}
 
 		getTargetPod = func(ctx context.Context, targetPod *networkpolicies.NamespacedPodInfo) *corev1.Pod {
+			if !targetPod.CheckVersion(shootTestOperations.Shoot) {
+				Skip("Target pod doesn't match Shoot version contstraints. Skipping.")
+			}
 			By(fmt.Sprintf("Checking that target Pod: %s is running", targetPod.PodName))
 			err := shootTestOperations.WaitUntilPodIsRunningWithLabels(ctx, targetPod.Selector(), targetPod.Namespace, shootTestOperations.SeedClient)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -134,6 +137,9 @@ var _ = Describe("Network Policy Testing", func() {
 		}
 
 		establishConnectionToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, host string, port int32) (io.Reader, error) {
+			if !sourcePod.CheckVersion(shootTestOperations.Shoot) {
+				Skip("Source pod doesn't match Shoot version contstraints. Skipping.")
+			}
 			By(fmt.Sprintf("Checking for source Pod: %s is running", sourcePod.PodName))
 			err := shootTestOperations.WaitUntilPodIsRunningWithLabels(ctx, sourcePod.Selector(), sourcePod.Namespace, shootTestOperations.SeedClient)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -178,9 +184,9 @@ var _ = Describe("Network Policy Testing", func() {
 			assertCannotConnectToHost(ctx, sourcePod, pod.Status.PodIP, targetPod.Port)
 		}
 
-		assertConnectToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, target *networkpolicies.TargetHost) {
-			r, err := establishConnectionToHost(ctx, sourcePod, target.Host.HostName, target.Host.Port)
-			if target.Allowed {
+		assertConnectToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetHost *networkpolicies.Host, allowed bool) {
+			r, err := establishConnectionToHost(ctx, sourcePod, targetHost.HostName, targetHost.Port)
+			if allowed {
 				ExpectWithOffset(1, err).NotTo(HaveOccurred())
 				ExpectWithOffset(1, r).NotTo(BeNil())
 			} else {
@@ -195,34 +201,16 @@ var _ = Describe("Network Policy Testing", func() {
 
 		assertConnectToPod = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetPod *networkpolicies.NamespacedPodInfo, allowed bool) {
 			pod := getTargetPod(ctx, targetPod)
-			assertConnectToHost(ctx, sourcePod, &networkpolicies.TargetHost{
-				Allowed: allowed,
-				Host: networkpolicies.Host{
-					HostName: pod.Status.PodIP,
-					Port:     targetPod.Port,
-				},
-			})
+			assertConnectToHost(ctx, sourcePod, &networkpolicies.Host{
+				HostName: pod.Status.PodIP,
+				Port:     targetPod.Port,
+			}, allowed)
 		}
 
 		// generated targets
-		KubeApiserver443 = &networkpolicies.PodInfo{
-			PodName:  "kube-apiserver",
-			Port:     443,
-			PortName: "",
-			Labels: labels.Set{
-				"app":  "kubernetes",
-				"role": "apiserver"},
-			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":     sets.Empty{},
-				"allow-kube-apiserver":      sets.Empty{},
-				"allow-to-dns":              sets.Empty{},
-				"allow-to-private-networks": sets.Empty{},
-				"allow-to-public-networks":  sets.Empty{},
-				"allow-to-shoot-networks":   sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
-		KubeControllerManager10252 = &networkpolicies.PodInfo{
-			PodName:  "kube-controller-manager",
-			Port:     10252,
+		KubeControllerManagerHttps10257 = &networkpolicies.PodInfo{
+			PodName:  "kube-controller-manager-https",
+			Port:     10257,
 			PortName: "",
 			Labels: labels.Set{
 				"app":                     "kubernetes",
@@ -235,9 +223,10 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-private-networks": sets.Empty{},
 				"allow-to-public-networks":  sets.Empty{},
 				"allow-to-shoot-apiserver":  sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
-		KubeScheduler10251 = &networkpolicies.PodInfo{
-			PodName:  "kube-scheduler",
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: ""}
+		KubeSchedulerHttp10251 = &networkpolicies.PodInfo{
+			PodName:  "kube-scheduler-http",
 			Port:     10251,
 			PortName: "",
 			Labels: labels.Set{
@@ -248,34 +237,23 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-from-prometheus":    sets.Empty{},
 				"allow-to-dns":             sets.Empty{},
 				"allow-to-shoot-apiserver": sets.Empty{},
-				"deny-all":                 sets.Empty{}}}
-		CloudControllerManager10253 = &networkpolicies.PodInfo{
-			PodName:  "cloud-controller-manager",
-			Port:     10253,
+				"deny-all":                 sets.Empty{}},
+			ShootVersionConstraint: "< 1.13"}
+		EtcdMain2379 = &networkpolicies.PodInfo{
+			PodName:  "etcd-main",
+			Port:     2379,
 			PortName: "",
 			Labels: labels.Set{
-				"app":                     "kubernetes",
+				"app":                     "etcd-statefulset",
 				"garden.sapcloud.io/role": "controlplane",
-				"role":                    "cloud-controller-manager"},
+				"role":                    "main"},
 			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":     sets.Empty{},
+				"allow-etcd":                sets.Empty{},
 				"allow-to-dns":              sets.Empty{},
-				"allow-to-metadata":         sets.Empty{},
 				"allow-to-private-networks": sets.Empty{},
 				"allow-to-public-networks":  sets.Empty{},
-				"allow-to-shoot-apiserver":  sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
-		ElasticsearchLogging9200 = &networkpolicies.PodInfo{
-			PodName:  "elasticsearch-logging",
-			Port:     9200,
-			PortName: "",
-			Labels: labels.Set{
-				"app":                     "elasticsearch-logging",
-				"garden.sapcloud.io/role": "logging",
-				"role":                    "logging"},
-			ExpectedPolicies: sets.String{
-				"allow-elasticsearch": sets.Empty{},
-				"deny-all":            sets.Empty{}}}
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: ""}
 		Grafana3000 = &networkpolicies.PodInfo{
 			PodName:  "grafana",
 			Port:     3000,
@@ -286,21 +264,22 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-grafana": sets.Empty{},
 				"allow-to-dns":  sets.Empty{},
-				"deny-all":      sets.Empty{}}}
-		EtcdEvents2379 = &networkpolicies.PodInfo{
-			PodName:  "etcd-events",
-			Port:     2379,
+				"deny-all":      sets.Empty{}},
+			ShootVersionConstraint: ""}
+		KubeStateMetricsSeed8080 = &networkpolicies.PodInfo{
+			PodName:  "kube-state-metrics-seed",
+			Port:     8080,
 			PortName: "",
 			Labels: labels.Set{
-				"app":                     "etcd-statefulset",
-				"garden.sapcloud.io/role": "controlplane",
-				"role":                    "events"},
+				"component":               "kube-state-metrics",
+				"garden.sapcloud.io/role": "monitoring",
+				"type":                    "seed"},
 			ExpectedPolicies: sets.String{
-				"allow-etcd":                sets.Empty{},
-				"allow-to-dns":              sets.Empty{},
-				"allow-to-private-networks": sets.Empty{},
-				"allow-to-public-networks":  sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
+				"allow-from-prometheus":   sets.Empty{},
+				"allow-to-dns":            sets.Empty{},
+				"allow-to-seed-apiserver": sets.Empty{},
+				"deny-all":                sets.Empty{}},
+			ShootVersionConstraint: ""}
 		MachineControllerManager10258 = &networkpolicies.PodInfo{
 			PodName:  "machine-controller-manager",
 			Port:     10258,
@@ -316,72 +295,29 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-public-networks":  sets.Empty{},
 				"allow-to-seed-apiserver":   sets.Empty{},
 				"allow-to-shoot-apiserver":  sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
-		EtcdMain2379 = &networkpolicies.PodInfo{
-			PodName:  "etcd-main",
-			Port:     2379,
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: ""}
+		SeedKubeAPIServerPort443 = &networkpolicies.Host{
+			Description: "Seed Kube APIServer",
+			HostName:    "kubernetes.default",
+			Port:        443}
+		KubeControllerManagerHttp10252 = &networkpolicies.PodInfo{
+			PodName:  "kube-controller-manager-http",
+			Port:     10252,
 			PortName: "",
 			Labels: labels.Set{
-				"app":                     "etcd-statefulset",
+				"app":                     "kubernetes",
 				"garden.sapcloud.io/role": "controlplane",
-				"role":                    "main"},
+				"role":                    "controller-manager"},
 			ExpectedPolicies: sets.String{
-				"allow-etcd":                sets.Empty{},
+				"allow-from-prometheus":     sets.Empty{},
 				"allow-to-dns":              sets.Empty{},
+				"allow-to-metadata":         sets.Empty{},
 				"allow-to-private-networks": sets.Empty{},
 				"allow-to-public-networks":  sets.Empty{},
-				"deny-all":                  sets.Empty{}}}
-		KubeStateMetricsShoot8080 = &networkpolicies.PodInfo{
-			PodName:  "kube-state-metrics-shoot",
-			Port:     8080,
-			PortName: "",
-			Labels: labels.Set{
-				"component":               "kube-state-metrics",
-				"garden.sapcloud.io/role": "monitoring",
-				"type":                    "shoot"},
-			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":    sets.Empty{},
-				"allow-to-dns":             sets.Empty{},
-				"allow-to-shoot-apiserver": sets.Empty{},
-				"deny-all":                 sets.Empty{}}}
-		GardenPrometheusPort80 = &networkpolicies.TargetHost{
-			Host: networkpolicies.Host{
-				Description: "Garden Prometheus",
-				HostName:    "prometheus-web.garden",
-				Port:        80},
-			Allowed: false}
-		SeedKubeAPIServerPort443 = &networkpolicies.TargetHost{
-			Host: networkpolicies.Host{
-				Description: "Seed Kube APIServer",
-				HostName:    "kubernetes.default",
-				Port:        443},
-			Allowed: true}
-		KibanaLogging5601 = &networkpolicies.PodInfo{
-			PodName:  "kibana-logging",
-			Port:     5601,
-			PortName: "",
-			Labels: labels.Set{
-				"app":                     "kibana-logging",
-				"garden.sapcloud.io/role": "logging",
-				"role":                    "logging"},
-			ExpectedPolicies: sets.String{
-				"allow-kibana":           sets.Empty{},
-				"allow-to-dns":           sets.Empty{},
-				"allow-to-elasticsearch": sets.Empty{},
-				"deny-all":               sets.Empty{}}}
-		KubeStateMetricsSeed8080 = &networkpolicies.PodInfo{
-			PodName:  "kube-state-metrics-seed",
-			Port:     8080,
-			PortName: "",
-			Labels: labels.Set{
-				"component":               "kube-state-metrics",
-				"garden.sapcloud.io/role": "monitoring",
-				"type":                    "seed"},
-			ExpectedPolicies: sets.String{
-				"allow-from-prometheus":   sets.Empty{},
-				"allow-to-dns":            sets.Empty{},
-				"allow-to-seed-apiserver": sets.Empty{},
-				"deny-all":                sets.Empty{}}}
+				"allow-to-shoot-apiserver":  sets.Empty{},
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: ""}
 		Prometheus9090 = &networkpolicies.PodInfo{
 			PodName:  "prometheus",
 			Port:     9090,
@@ -397,7 +333,122 @@ var _ = Describe("Network Policy Testing", func() {
 				"allow-to-seed-apiserver":  sets.Empty{},
 				"allow-to-shoot-apiserver": sets.Empty{},
 				"allow-to-shoot-networks":  sets.Empty{},
-				"deny-all":                 sets.Empty{}}}
+				"deny-all":                 sets.Empty{}},
+			ShootVersionConstraint: ""}
+		MetadataservicePort80 = &networkpolicies.Host{
+			Description: "Metadata service",
+			HostName:    "169.254.169.254",
+			Port:        80}
+		ExternalhostPort53 = &networkpolicies.Host{
+			Description: "External host",
+			HostName:    "8.8.8.8",
+			Port:        53}
+		KibanaLogging5601 = &networkpolicies.PodInfo{
+			PodName:  "kibana-logging",
+			Port:     5601,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "kibana-logging",
+				"garden.sapcloud.io/role": "logging",
+				"role":                    "logging"},
+			ExpectedPolicies: sets.String{
+				"allow-kibana":           sets.Empty{},
+				"allow-to-dns":           sets.Empty{},
+				"allow-to-elasticsearch": sets.Empty{},
+				"deny-all":               sets.Empty{}},
+			ShootVersionConstraint: ""}
+		KubeSchedulerHttps10259 = &networkpolicies.PodInfo{
+			PodName:  "kube-scheduler-https",
+			Port:     10259,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "kubernetes",
+				"garden.sapcloud.io/role": "controlplane",
+				"role":                    "scheduler"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":    sets.Empty{},
+				"allow-to-dns":             sets.Empty{},
+				"allow-to-shoot-apiserver": sets.Empty{},
+				"deny-all":                 sets.Empty{}},
+			ShootVersionConstraint: ">= 1.13"}
+		EtcdEvents2379 = &networkpolicies.PodInfo{
+			PodName:  "etcd-events",
+			Port:     2379,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "etcd-statefulset",
+				"garden.sapcloud.io/role": "controlplane",
+				"role":                    "events"},
+			ExpectedPolicies: sets.String{
+				"allow-etcd":                sets.Empty{},
+				"allow-to-dns":              sets.Empty{},
+				"allow-to-private-networks": sets.Empty{},
+				"allow-to-public-networks":  sets.Empty{},
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: ""}
+		CloudControllerManagerHttps10258 = &networkpolicies.PodInfo{
+			PodName:  "cloud-controller-manager-https",
+			Port:     10258,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "kubernetes",
+				"garden.sapcloud.io/role": "controlplane",
+				"role":                    "cloud-controller-manager"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":     sets.Empty{},
+				"allow-to-dns":              sets.Empty{},
+				"allow-to-metadata":         sets.Empty{},
+				"allow-to-private-networks": sets.Empty{},
+				"allow-to-public-networks":  sets.Empty{},
+				"allow-to-shoot-apiserver":  sets.Empty{},
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: ">= 1.13"}
+		ElasticsearchLogging9200 = &networkpolicies.PodInfo{
+			PodName:  "elasticsearch-logging",
+			Port:     9200,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "elasticsearch-logging",
+				"garden.sapcloud.io/role": "logging",
+				"role":                    "logging"},
+			ExpectedPolicies: sets.String{
+				"allow-elasticsearch": sets.Empty{},
+				"deny-all":            sets.Empty{}},
+			ShootVersionConstraint: ""}
+		KubeStateMetricsShoot8080 = &networkpolicies.PodInfo{
+			PodName:  "kube-state-metrics-shoot",
+			Port:     8080,
+			PortName: "",
+			Labels: labels.Set{
+				"component":               "kube-state-metrics",
+				"garden.sapcloud.io/role": "monitoring",
+				"type":                    "shoot"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":    sets.Empty{},
+				"allow-to-dns":             sets.Empty{},
+				"allow-to-shoot-apiserver": sets.Empty{},
+				"deny-all":                 sets.Empty{}},
+			ShootVersionConstraint: ""}
+		GardenPrometheusPort80 = &networkpolicies.Host{
+			Description: "Garden Prometheus",
+			HostName:    "prometheus-web.garden",
+			Port:        80}
+		KubeApiserver443 = &networkpolicies.PodInfo{
+			PodName:  "kube-apiserver",
+			Port:     443,
+			PortName: "",
+			Labels: labels.Set{
+				"app":  "kubernetes",
+				"role": "apiserver"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":     sets.Empty{},
+				"allow-kube-apiserver":      sets.Empty{},
+				"allow-to-dns":              sets.Empty{},
+				"allow-to-private-networks": sets.Empty{},
+				"allow-to-public-networks":  sets.Empty{},
+				"allow-to-shoot-networks":   sets.Empty{},
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: ""}
 		KubeAddonManager9090 = &networkpolicies.PodInfo{
 			PodName:  "kube-addon-manager",
 			Port:     9090,
@@ -409,19 +460,25 @@ var _ = Describe("Network Policy Testing", func() {
 			ExpectedPolicies: sets.String{
 				"allow-to-dns":             sets.Empty{},
 				"allow-to-shoot-apiserver": sets.Empty{},
-				"deny-all":                 sets.Empty{}}}
-		MetadataservicePort80 = &networkpolicies.TargetHost{
-			Host: networkpolicies.Host{
-				Description: "Metadata service",
-				HostName:    "169.254.169.254",
-				Port:        80},
-			Allowed: false}
-		ExternalhostPort53 = &networkpolicies.TargetHost{
-			Host: networkpolicies.Host{
-				Description: "External host",
-				HostName:    "8.8.8.8",
-				Port:        53},
-			Allowed: true}
+				"deny-all":                 sets.Empty{}},
+			ShootVersionConstraint: ""}
+		CloudControllerManagerHttp10253 = &networkpolicies.PodInfo{
+			PodName:  "cloud-controller-manager-http",
+			Port:     10253,
+			PortName: "",
+			Labels: labels.Set{
+				"app":                     "kubernetes",
+				"garden.sapcloud.io/role": "controlplane",
+				"role":                    "cloud-controller-manager"},
+			ExpectedPolicies: sets.String{
+				"allow-from-prometheus":     sets.Empty{},
+				"allow-to-dns":              sets.Empty{},
+				"allow-to-metadata":         sets.Empty{},
+				"allow-to-private-networks": sets.Empty{},
+				"allow-to-public-networks":  sets.Empty{},
+				"allow-to-shoot-apiserver":  sets.Empty{},
+				"deny-all":                  sets.Empty{}},
+			ShootVersionConstraint: "< 1.13"}
 	)
 
 	SynchronizedBeforeSuite(func() []byte {
@@ -501,6 +558,9 @@ var _ = Describe("Network Policy Testing", func() {
 			go func(pi *networkpolicies.PodInfo) {
 				defer GinkgoRecover()
 				defer wg.Done()
+				if !pi.CheckVersion(shootTestOperations.Shoot) {
+					return
+				}
 				pod, err := shootTestOperations.GetFirstRunningPodWithLabels(ctx, pi.Selector(), shootTestOperations.ShootSeedNamespace(), shootTestOperations.SeedClient)
 				Expect(err).NotTo(HaveOccurred())
 				cpy := *pi
@@ -546,7 +606,7 @@ var _ = Describe("Network Policy Testing", func() {
 	})
 
 	SynchronizedAfterSuite(func() {
-		if *cleanup {
+		if !*cleanup {
 			return
 		}
 
@@ -601,6 +661,9 @@ var _ = Describe("Network Policy Testing", func() {
 		var (
 			assertHasNetworkPolicy = func(podInfo *networkpolicies.PodInfo) func(context.Context) {
 				return func(ctx context.Context) {
+					if !podInfo.CheckVersion(shootTestOperations.Shoot) {
+						Skip("Component doesn't match Shoot version contstraints. Skipping.")
+					}
 
 					matched := sets.NewString()
 					var podLabelSet labels.Set
@@ -626,13 +689,16 @@ var _ = Describe("Network Policy Testing", func() {
 		CIt("kube-apiserver", assertHasNetworkPolicy(KubeApiserver443), 10*time.Second)
 		CIt("etcd-main", assertHasNetworkPolicy(EtcdMain2379), 10*time.Second)
 		CIt("etcd-events", assertHasNetworkPolicy(EtcdEvents2379), 10*time.Second)
-		CIt("cloud-controller-manager", assertHasNetworkPolicy(CloudControllerManager10253), 10*time.Second)
+		CIt("cloud-controller-manager-http", assertHasNetworkPolicy(CloudControllerManagerHttp10253), 10*time.Second)
+		CIt("cloud-controller-manager-https", assertHasNetworkPolicy(CloudControllerManagerHttps10258), 10*time.Second)
 		CIt("elasticsearch-logging", assertHasNetworkPolicy(ElasticsearchLogging9200), 10*time.Second)
 		CIt("grafana", assertHasNetworkPolicy(Grafana3000), 10*time.Second)
 		CIt("kibana-logging", assertHasNetworkPolicy(KibanaLogging5601), 10*time.Second)
 		CIt("kube-addon-manager", assertHasNetworkPolicy(KubeAddonManager9090), 10*time.Second)
-		CIt("kube-controller-manager", assertHasNetworkPolicy(KubeControllerManager10252), 10*time.Second)
-		CIt("kube-scheduler", assertHasNetworkPolicy(KubeScheduler10251), 10*time.Second)
+		CIt("kube-controller-manager-http", assertHasNetworkPolicy(KubeControllerManagerHttp10252), 10*time.Second)
+		CIt("kube-controller-manager-https", assertHasNetworkPolicy(KubeControllerManagerHttps10257), 10*time.Second)
+		CIt("kube-scheduler-http", assertHasNetworkPolicy(KubeSchedulerHttp10251), 10*time.Second)
+		CIt("kube-scheduler-https", assertHasNetworkPolicy(KubeSchedulerHttps10259), 10*time.Second)
 		CIt("kube-state-metrics-shoot", assertHasNetworkPolicy(KubeStateMetricsShoot8080), 10*time.Second)
 		CIt("kube-state-metrics-seed", assertHasNetworkPolicy(KubeStateMetricsSeed8080), 10*time.Second)
 		CIt("machine-controller-manager", assertHasNetworkPolicy(MachineControllerManager10258), 10*time.Second)
@@ -650,11 +716,14 @@ var _ = Describe("Network Policy Testing", func() {
 		)
 
 		CIt("should allow connection to kube-apiserver at port 443", assertBlockIngress(KubeApiserver443, true), DefaultTestTimeout)
-		CIt("should block connection to kube-controller-manager at port 10252", assertBlockIngress(KubeControllerManager10252, false), DefaultTestTimeout)
-		CIt("should block connection to kube-scheduler at port 10251", assertBlockIngress(KubeScheduler10251, false), DefaultTestTimeout)
+		CIt("should block connection to kube-controller-manager-http at port 10252", assertBlockIngress(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+		CIt("should block connection to kube-controller-manager-https at port 10257", assertBlockIngress(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+		CIt("should block connection to kube-scheduler-http at port 10251", assertBlockIngress(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+		CIt("should block connection to kube-scheduler-https at port 10259", assertBlockIngress(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 		CIt("should block connection to etcd-main at port 2379", assertBlockIngress(EtcdMain2379, false), DefaultTestTimeout)
 		CIt("should block connection to etcd-events at port 2379", assertBlockIngress(EtcdEvents2379, false), DefaultTestTimeout)
-		CIt("should block connection to cloud-controller-manager at port 10253", assertBlockIngress(CloudControllerManager10253, false), DefaultTestTimeout)
+		CIt("should block connection to cloud-controller-manager-http at port 10253", assertBlockIngress(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+		CIt("should block connection to cloud-controller-manager-https at port 10258", assertBlockIngress(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 		CIt("should block connection to elasticsearch-logging at port 9200", assertBlockIngress(ElasticsearchLogging9200, false), DefaultTestTimeout)
 		CIt("should block connection to grafana at port 3000", assertBlockIngress(Grafana3000, false), DefaultTestTimeout)
 		CIt("should block connection to kibana-logging at port 5601", assertBlockIngress(KibanaLogging5601, false), DefaultTestTimeout)
@@ -678,13 +747,16 @@ var _ = Describe("Network Policy Testing", func() {
 		CIt("should block connectivity from kube-apiserver to busybox", assertBlockEgresss(KubeApiserver443), DefaultTestTimeout)
 		CIt("should block connectivity from etcd-main to busybox", assertBlockEgresss(EtcdMain2379), DefaultTestTimeout)
 		CIt("should block connectivity from etcd-events to busybox", assertBlockEgresss(EtcdEvents2379), DefaultTestTimeout)
-		CIt("should block connectivity from cloud-controller-manager to busybox", assertBlockEgresss(CloudControllerManager10253), DefaultTestTimeout)
+		CIt("should block connectivity from cloud-controller-manager-http to busybox", assertBlockEgresss(CloudControllerManagerHttp10253), DefaultTestTimeout)
+		CIt("should block connectivity from cloud-controller-manager-https to busybox", assertBlockEgresss(CloudControllerManagerHttps10258), DefaultTestTimeout)
 		CIt("should block connectivity from elasticsearch-logging to busybox", assertBlockEgresss(ElasticsearchLogging9200), DefaultTestTimeout)
 		CIt("should block connectivity from grafana to busybox", assertBlockEgresss(Grafana3000), DefaultTestTimeout)
 		CIt("should block connectivity from kibana-logging to busybox", assertBlockEgresss(KibanaLogging5601), DefaultTestTimeout)
 		CIt("should block connectivity from kube-addon-manager to busybox", assertBlockEgresss(KubeAddonManager9090), DefaultTestTimeout)
-		CIt("should block connectivity from kube-controller-manager to busybox", assertBlockEgresss(KubeControllerManager10252), DefaultTestTimeout)
-		CIt("should block connectivity from kube-scheduler to busybox", assertBlockEgresss(KubeScheduler10251), DefaultTestTimeout)
+		CIt("should block connectivity from kube-controller-manager-http to busybox", assertBlockEgresss(KubeControllerManagerHttp10252), DefaultTestTimeout)
+		CIt("should block connectivity from kube-controller-manager-https to busybox", assertBlockEgresss(KubeControllerManagerHttps10257), DefaultTestTimeout)
+		CIt("should block connectivity from kube-scheduler-http to busybox", assertBlockEgresss(KubeSchedulerHttp10251), DefaultTestTimeout)
+		CIt("should block connectivity from kube-scheduler-https to busybox", assertBlockEgresss(KubeSchedulerHttps10259), DefaultTestTimeout)
 		CIt("should block connectivity from kube-state-metrics-shoot to busybox", assertBlockEgresss(KubeStateMetricsShoot8080), DefaultTestTimeout)
 		CIt("should block connectivity from kube-state-metrics-seed to busybox", assertBlockEgresss(KubeStateMetricsSeed8080), DefaultTestTimeout)
 		CIt("should block connectivity from machine-controller-manager to busybox", assertBlockEgresss(MachineControllerManager10258), DefaultTestTimeout)
@@ -704,13 +776,16 @@ var _ = Describe("Network Policy Testing", func() {
 		CIt("should block connectivity from kube-apiserver", assertBlockToSeedNodes(KubeApiserver443), DefaultTestTimeout)
 		CIt("should block connectivity from etcd-main", assertBlockToSeedNodes(EtcdMain2379), DefaultTestTimeout)
 		CIt("should block connectivity from etcd-events", assertBlockToSeedNodes(EtcdEvents2379), DefaultTestTimeout)
-		CIt("should block connectivity from cloud-controller-manager", assertBlockToSeedNodes(CloudControllerManager10253), DefaultTestTimeout)
+		CIt("should block connectivity from cloud-controller-manager-http", assertBlockToSeedNodes(CloudControllerManagerHttp10253), DefaultTestTimeout)
+		CIt("should block connectivity from cloud-controller-manager-https", assertBlockToSeedNodes(CloudControllerManagerHttps10258), DefaultTestTimeout)
 		CIt("should block connectivity from elasticsearch-logging", assertBlockToSeedNodes(ElasticsearchLogging9200), DefaultTestTimeout)
 		CIt("should block connectivity from grafana", assertBlockToSeedNodes(Grafana3000), DefaultTestTimeout)
 		CIt("should block connectivity from kibana-logging", assertBlockToSeedNodes(KibanaLogging5601), DefaultTestTimeout)
 		CIt("should block connectivity from kube-addon-manager", assertBlockToSeedNodes(KubeAddonManager9090), DefaultTestTimeout)
-		CIt("should block connectivity from kube-controller-manager", assertBlockToSeedNodes(KubeControllerManager10252), DefaultTestTimeout)
-		CIt("should block connectivity from kube-scheduler", assertBlockToSeedNodes(KubeScheduler10251), DefaultTestTimeout)
+		CIt("should block connectivity from kube-controller-manager-http", assertBlockToSeedNodes(KubeControllerManagerHttp10252), DefaultTestTimeout)
+		CIt("should block connectivity from kube-controller-manager-https", assertBlockToSeedNodes(KubeControllerManagerHttps10257), DefaultTestTimeout)
+		CIt("should block connectivity from kube-scheduler-http", assertBlockToSeedNodes(KubeSchedulerHttp10251), DefaultTestTimeout)
+		CIt("should block connectivity from kube-scheduler-https", assertBlockToSeedNodes(KubeSchedulerHttps10259), DefaultTestTimeout)
 		CIt("should block connectivity from kube-state-metrics-shoot", assertBlockToSeedNodes(KubeStateMetricsShoot8080), DefaultTestTimeout)
 		CIt("should block connectivity from kube-state-metrics-seed", assertBlockToSeedNodes(KubeStateMetricsSeed8080), DefaultTestTimeout)
 		CIt("should block connectivity from machine-controller-manager", assertBlockToSeedNodes(MachineControllerManager10258), DefaultTestTimeout)
@@ -728,9 +803,9 @@ var _ = Describe("Network Policy Testing", func() {
 				}
 			}
 
-			assertEgresssToHost = func(targetHost *networkpolicies.TargetHost) func(context.Context) {
+			assertEgresssToHost = func(targetHost *networkpolicies.Host, allowed bool) func(context.Context) {
 				return func(ctx context.Context) {
-					assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(sourcePod, sharedResources.Mirror), targetHost)
+					assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(sourcePod, sharedResources.Mirror), targetHost, allowed)
 				}
 			}
 		)
@@ -741,11 +816,14 @@ var _ = Describe("Network Policy Testing", func() {
 				sourcePod = KubeApiserver443
 			})
 
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should allow connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, true), DefaultTestTimeout)
 			CIt("should allow connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, true), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -754,10 +832,10 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
-			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
+			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443, true), DefaultTestTimeout)
 		})
 
 		Context("etcd-main", func() {
@@ -767,10 +845,13 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should block connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, false), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -779,9 +860,9 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
 		Context("etcd-events", func() {
@@ -791,10 +872,13 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should block connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, false), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -803,22 +887,25 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
-		Context("cloud-controller-manager", func() {
+		Context("cloud-controller-manager-http", func() {
 
 			BeforeEach(func() {
-				sourcePod = CloudControllerManager10253
+				sourcePod = CloudControllerManagerHttp10253
 			})
 
 			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -827,9 +914,36 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should allow connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should allow connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, true), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
+		})
+
+		Context("cloud-controller-manager-https", func() {
+
+			BeforeEach(func() {
+				sourcePod = CloudControllerManagerHttps10258
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
+			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
+			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
+			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
+			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
+			CIt("should block connection to kube-state-metrics-seed at port 8080", assertEgresssToMirroredPod(KubeStateMetricsSeed8080, false), DefaultTestTimeout)
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", assertEgresssToMirroredPod(KubeStateMetricsShoot8080, false), DefaultTestTimeout)
+			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
+			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
+			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
+			CIt("should allow connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, true), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
 		Context("elasticsearch-logging", func() {
@@ -839,11 +953,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should block connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, false), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
 			CIt("should block connection to kube-state-metrics-seed at port 8080", assertEgresssToMirroredPod(KubeStateMetricsSeed8080, false), DefaultTestTimeout)
@@ -851,9 +968,9 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, false), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
 		Context("grafana", func() {
@@ -863,11 +980,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should block connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, false), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
 			CIt("should block connection to kube-state-metrics-seed at port 8080", assertEgresssToMirroredPod(KubeStateMetricsSeed8080, false), DefaultTestTimeout)
@@ -875,9 +995,9 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should allow connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, true), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, false), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
 		Context("kibana-logging", func() {
@@ -887,11 +1007,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should block connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, false), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should allow connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, true), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kube-state-metrics-seed at port 8080", assertEgresssToMirroredPod(KubeStateMetricsSeed8080, false), DefaultTestTimeout)
@@ -899,9 +1022,9 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, false), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
 		Context("kube-addon-manager", func() {
@@ -911,11 +1034,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -923,22 +1049,25 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to kube-state-metrics-shoot at port 8080", assertEgresssToMirroredPod(KubeStateMetricsShoot8080, false), DefaultTestTimeout)
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, false), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
-		Context("kube-controller-manager", func() {
+		Context("kube-controller-manager-http", func() {
 
 			BeforeEach(func() {
-				sourcePod = KubeControllerManager10252
+				sourcePod = KubeControllerManagerHttp10252
 			})
 
 			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -947,22 +1076,25 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should allow connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should allow connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, true), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
-		Context("kube-scheduler", func() {
+		Context("kube-controller-manager-https", func() {
 
 			BeforeEach(func() {
-				sourcePod = KubeScheduler10251
+				sourcePod = KubeControllerManagerHttps10257
 			})
 
 			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -971,9 +1103,63 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should allow connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, true), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
+		})
+
+		Context("kube-scheduler-http", func() {
+
+			BeforeEach(func() {
+				sourcePod = KubeSchedulerHttp10251
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
+			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
+			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
+			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
+			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
+			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
+			CIt("should block connection to kube-state-metrics-seed at port 8080", assertEgresssToMirroredPod(KubeStateMetricsSeed8080, false), DefaultTestTimeout)
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", assertEgresssToMirroredPod(KubeStateMetricsShoot8080, false), DefaultTestTimeout)
+			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
+			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
+			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, false), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
+		})
+
+		Context("kube-scheduler-https", func() {
+
+			BeforeEach(func() {
+				sourcePod = KubeSchedulerHttps10259
+			})
+
+			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
+			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
+			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
+			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
+			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
+			CIt("should block connection to kube-state-metrics-seed at port 8080", assertEgresssToMirroredPod(KubeStateMetricsSeed8080, false), DefaultTestTimeout)
+			CIt("should block connection to kube-state-metrics-shoot at port 8080", assertEgresssToMirroredPod(KubeStateMetricsShoot8080, false), DefaultTestTimeout)
+			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
+			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
+			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, false), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
 		Context("kube-state-metrics-shoot", func() {
@@ -983,11 +1169,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -995,9 +1184,9 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should block connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, false), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
 		})
 
 		Context("kube-state-metrics-seed", func() {
@@ -1007,11 +1196,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should block connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, false), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -1019,10 +1211,10 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
-			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
+			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443, true), DefaultTestTimeout)
 		})
 
 		Context("machine-controller-manager", func() {
@@ -1032,11 +1224,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
-			CIt("should block connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, false), DefaultTestTimeout)
-			CIt("should block connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, false), DefaultTestTimeout)
+			CIt("should block connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, false), DefaultTestTimeout)
+			CIt("should block connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, false), DefaultTestTimeout)
 			CIt("should block connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, false), DefaultTestTimeout)
-			CIt("should block connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, false), DefaultTestTimeout)
+			CIt("should block connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, false), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -1044,10 +1239,10 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should block connection to kube-state-metrics-shoot at port 8080", assertEgresssToMirroredPod(KubeStateMetricsShoot8080, false), DefaultTestTimeout)
 			CIt("should block connection to prometheus at port 9090", assertEgresssToMirroredPod(Prometheus9090, false), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
-			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should block connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, false), DefaultTestTimeout)
+			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443, true), DefaultTestTimeout)
 		})
 
 		Context("prometheus", func() {
@@ -1057,11 +1252,14 @@ var _ = Describe("Network Policy Testing", func() {
 			})
 
 			CIt("should allow connection to kube-apiserver at port 443", assertEgresssToMirroredPod(KubeApiserver443, true), DefaultTestTimeout)
-			CIt("should allow connection to kube-controller-manager at port 10252", assertEgresssToMirroredPod(KubeControllerManager10252, true), DefaultTestTimeout)
-			CIt("should allow connection to kube-scheduler at port 10251", assertEgresssToMirroredPod(KubeScheduler10251, true), DefaultTestTimeout)
+			CIt("should allow connection to kube-controller-manager-http at port 10252", assertEgresssToMirroredPod(KubeControllerManagerHttp10252, true), DefaultTestTimeout)
+			CIt("should allow connection to kube-controller-manager-https at port 10257", assertEgresssToMirroredPod(KubeControllerManagerHttps10257, true), DefaultTestTimeout)
+			CIt("should allow connection to kube-scheduler-http at port 10251", assertEgresssToMirroredPod(KubeSchedulerHttp10251, true), DefaultTestTimeout)
+			CIt("should allow connection to kube-scheduler-https at port 10259", assertEgresssToMirroredPod(KubeSchedulerHttps10259, true), DefaultTestTimeout)
 			CIt("should allow connection to etcd-main at port 2379", assertEgresssToMirroredPod(EtcdMain2379, true), DefaultTestTimeout)
 			CIt("should allow connection to etcd-events at port 2379", assertEgresssToMirroredPod(EtcdEvents2379, true), DefaultTestTimeout)
-			CIt("should allow connection to cloud-controller-manager at port 10253", assertEgresssToMirroredPod(CloudControllerManager10253, true), DefaultTestTimeout)
+			CIt("should allow connection to cloud-controller-manager-http at port 10253", assertEgresssToMirroredPod(CloudControllerManagerHttp10253, true), DefaultTestTimeout)
+			CIt("should allow connection to cloud-controller-manager-https at port 10258", assertEgresssToMirroredPod(CloudControllerManagerHttps10258, true), DefaultTestTimeout)
 			CIt("should block connection to elasticsearch-logging at port 9200", assertEgresssToMirroredPod(ElasticsearchLogging9200, false), DefaultTestTimeout)
 			CIt("should block connection to grafana at port 3000", assertEgresssToMirroredPod(Grafana3000, false), DefaultTestTimeout)
 			CIt("should block connection to kibana-logging at port 5601", assertEgresssToMirroredPod(KibanaLogging5601, false), DefaultTestTimeout)
@@ -1069,10 +1267,10 @@ var _ = Describe("Network Policy Testing", func() {
 			CIt("should allow connection to kube-state-metrics-shoot at port 8080", assertEgresssToMirroredPod(KubeStateMetricsShoot8080, true), DefaultTestTimeout)
 			CIt("should allow connection to machine-controller-manager at port 10258", assertEgresssToMirroredPod(MachineControllerManager10258, true), DefaultTestTimeout)
 			CIt("should block connection to kube-addon-manager at port 9090", assertEgresssToMirroredPod(KubeAddonManager9090, false), DefaultTestTimeout)
-			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80), DefaultTestTimeout)
-			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53), DefaultTestTimeout)
-			CIt("should allow connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80), DefaultTestTimeout)
-			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443), DefaultTestTimeout)
+			CIt("should block connection to Metadata service (169.254.169.254:80)", assertEgresssToHost(MetadataservicePort80, false), DefaultTestTimeout)
+			CIt("should allow connection to External host (8.8.8.8:53)", assertEgresssToHost(ExternalhostPort53, true), DefaultTestTimeout)
+			CIt("should allow connection to Garden Prometheus (prometheus-web.garden:80)", assertEgresssToHost(GardenPrometheusPort80, true), DefaultTestTimeout)
+			CIt("should allow connection to Seed Kube APIServer (kubernetes.default:443)", assertEgresssToHost(SeedKubeAPIServerPort443, true), DefaultTestTimeout)
 		})
 	})
 })

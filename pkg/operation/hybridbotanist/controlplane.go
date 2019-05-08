@@ -182,38 +182,37 @@ func (b *HybridBotanist) DeployETCD() error {
 func (b *HybridBotanist) DeployNetworkPolicies() error {
 	addr := b.SeedCloudBotanist.MetadataServiceAddress()
 
-	seedNetworks := b.Seed.Info.Spec.Networks
-	allCIDRNetworks := []gardencorev1alpha1.CIDR{seedNetworks.Nodes, seedNetworks.Pods, seedNetworks.Services}
-
-	values := map[string]interface{}{}
-	if networks := b.Shoot.GetK8SNetworks(); networks != nil {
-		networkValues := map[string]interface{}{
-			"denyAll": true,
-		}
-		if networks.Nodes != nil {
-			networkValues["nodes"] = *networks.Nodes
-			allCIDRNetworks = append(allCIDRNetworks, *networks.Nodes)
-		}
-		if networks.Pods != nil {
-			networkValues["pods"] = *networks.Pods
-			allCIDRNetworks = append(allCIDRNetworks, *networks.Pods)
-		}
-		if networks.Services != nil {
-			networkValues["services"] = *networks.Services
-			allCIDRNetworks = append(allCIDRNetworks, *networks.Services)
-		}
-
-		values["shoot"] = networkValues
-	}
-
 	globalNetworkPoliciesValues := map[string]interface{}{}
-
+	excludeNets := []gardencorev1alpha1.CIDR{}
 	if addr != nil {
-		allCIDRNetworks = append(allCIDRNetworks, gardencorev1alpha1.CIDR(addr.String()))
+		excludeNets = append(excludeNets, gardencorev1alpha1.CIDR(addr.String()))
 		globalNetworkPoliciesValues["metadataService"] = addr.String()
 	}
 
-	privateNetworks, err := common.ToExceptNetworks(allCIDRNetworks...)
+	values := map[string]interface{}{}
+	shootCIDRNetworks := []gardencorev1alpha1.CIDR{}
+	if networks := b.Shoot.GetK8SNetworks(); networks != nil {
+		if networks.Nodes != nil {
+			shootCIDRNetworks = append(shootCIDRNetworks, *networks.Nodes)
+		}
+		if networks.Pods != nil {
+			shootCIDRNetworks = append(shootCIDRNetworks, *networks.Pods)
+		}
+		if networks.Services != nil {
+			shootCIDRNetworks = append(shootCIDRNetworks, *networks.Services)
+		}
+		shootNetworkValues, err := common.ExceptNetworks(shootCIDRNetworks, excludeNets...)
+		if err != nil {
+			return err
+		}
+		values["clusterNetworks"] = shootNetworkValues
+	}
+
+	seedNetworks := b.Seed.Info.Spec.Networks
+	allCIDRNetworks := append([]gardencorev1alpha1.CIDR{seedNetworks.Nodes, seedNetworks.Pods, seedNetworks.Services}, shootCIDRNetworks...)
+	allCIDRNetworks = append(allCIDRNetworks, excludeNets...)
+
+	privateNetworks, err := common.ToExceptNetworks(common.AllPrivateNetworkBlocks(), allCIDRNetworks...)
 	if err != nil {
 		return err
 	}

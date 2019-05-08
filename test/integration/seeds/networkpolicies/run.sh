@@ -1,9 +1,10 @@
 #!/bin/sh
 
-ginkgo -progress -v -noColor -nodes=25 aws -- \
+ginkgo --progress -v --noColor -nodes=25 --randomizeAllSpecs --randomizeSuites --failOnPending --trace --race alicloud -- \
         -kubeconfig $HOME/.kube/config \
-        -shootName "shoot" \
-        -shootNamespace "garden-i355448"
+        -shootName "netpolicy" \
+        -shootNamespace "garden-i068969" \
+        -cleanup=false
 # go test -kubeconfig $HOME/.kube/config \
 #         -shootName "shoot" \
 #         -shootNamespace "garden-i355448" \

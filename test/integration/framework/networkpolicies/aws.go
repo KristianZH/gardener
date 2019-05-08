@@ -22,26 +22,6 @@ import (
 
 var (
 
-	// AWSKubeControllerManagerInfo points to aws-specific kube-controller-manager.
-	AWSKubeControllerManagerInfo = &PodInfo{
-		PodName: "kube-controller-manager",
-		Port:    10252,
-		Labels: labels.Set{
-			"app":                     "kubernetes",
-			"garden.sapcloud.io/role": "controlplane",
-			"role":                    "controller-manager",
-		},
-		ExpectedPolicies: sets.NewString(
-			"allow-to-public-networks",
-			"allow-to-private-networks",
-			"allow-from-prometheus",
-			"allow-to-dns",
-			"allow-to-metadata",
-			"allow-to-shoot-apiserver",
-			"deny-all",
-		),
-	}
-
 	// AWSLBReadvertiserInfo points to aws-specific aws-lb-readvertiser.
 	AWSLBReadvertiserInfo = &PodInfo{
 		PodName: "aws-lb-readvertiser",
@@ -79,13 +59,16 @@ func (a *AWSPodInfo) ToSources() []Source {
 		a.newSource(KubeAPIServerInfo).AllowPod(EtcdMainInfo, EtcdEventsInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(EtcdMainInfo).AllowHost(ExternalHost).Build(),
 		a.newSource(EtcdEventsInfo).AllowHost(ExternalHost).Build(),
-		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfoSecured).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(ElasticSearchInfo).Build(),
 		a.newSource(GrafanaInfo).AllowPod(PrometheusInfo).Build(),
 		a.newSource(KibanaInfo).AllowPod(ElasticSearchInfo).Build(),
 		a.newSource(AddonManagerInfo).AllowPod(KubeAPIServerInfo).Build(),
-		a.newSource(AWSKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
-		a.newSource(KubeSchedulerInfo).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(KubeControllerManagerInfoSecured).AllowPod(KubeAPIServerInfo).AllowHost(AWSMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(KubeSchedulerInfoNotSecured).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeSchedulerInfoSecured).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsShootInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsSeedInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(MachineControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
@@ -94,9 +77,12 @@ func (a *AWSPodInfo) ToSources() []Source {
 			KubeAPIServerInfo,
 			EtcdMainInfo,
 			EtcdEventsInfo,
-			CloudControllerManagerInfo,
-			AWSKubeControllerManagerInfo,
-			KubeSchedulerInfo,
+			CloudControllerManagerInfoNotSecured,
+			CloudControllerManagerInfoSecured,
+			KubeControllerManagerInfoNotSecured,
+			KubeControllerManagerInfoSecured,
+			KubeSchedulerInfoNotSecured,
+			KubeSchedulerInfoSecured,
 			KubeStateMetricsShootInfo,
 			KubeStateMetricsSeedInfo,
 			MachineControllerManagerInfo,
@@ -108,11 +94,14 @@ func (a *AWSPodInfo) ToSources() []Source {
 func (a *AWSPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
 		{*KubeAPIServerInfo, true},
-		{*AWSKubeControllerManagerInfo, false},
-		{*KubeSchedulerInfo, false},
+		{*KubeControllerManagerInfoNotSecured, false},
+		{*KubeControllerManagerInfoSecured, false},
+		{*KubeSchedulerInfoNotSecured, false},
+		{*KubeSchedulerInfoSecured, false},
 		{*EtcdMainInfo, false},
 		{*EtcdEventsInfo, false},
-		{*CloudControllerManagerInfo, false},
+		{*CloudControllerManagerInfoNotSecured, false},
+		{*CloudControllerManagerInfoSecured, false},
 		{*ElasticSearchInfo, false},
 		{*GrafanaInfo, false},
 		{*KibanaInfo, false},
@@ -128,11 +117,14 @@ func (a *AWSPodInfo) EgressFromOtherNamespaces() []TargetPod {
 func (a *AWSPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 	denyAll := []*PodInfo{
 		KubeAPIServerInfo,
-		AWSKubeControllerManagerInfo,
-		KubeSchedulerInfo,
+		KubeControllerManagerInfoNotSecured,
+		KubeControllerManagerInfoSecured,
+		KubeSchedulerInfoNotSecured,
+		KubeSchedulerInfoSecured,
 		EtcdMainInfo,
 		EtcdEventsInfo,
-		CloudControllerManagerInfo,
+		CloudControllerManagerInfoNotSecured,
+		CloudControllerManagerInfoSecured,
 		ElasticSearchInfo,
 		GrafanaInfo,
 		KibanaInfo,

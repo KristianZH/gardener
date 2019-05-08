@@ -15,6 +15,9 @@
 package networkpolicies
 
 import (
+	"fmt"
+
+	"github.com/Masterminds/semver"
 	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -22,11 +25,30 @@ import (
 
 // PodInfo holds the data about pods in the shoot namespace and their services.
 type PodInfo struct {
-	PodName          string
-	Port             int32
-	PortName         string
-	Labels           labels.Set
-	ExpectedPolicies sets.String
+	PodName                string
+	Port                   int32
+	PortName               string
+	Labels                 labels.Set
+	ExpectedPolicies       sets.String
+	ShootVersionConstraint string
+}
+
+// CheckVersion checks if shoot version  is matched by ShootVersionConstraint.
+func (p *PodInfo) CheckVersion(shoot *v1beta1.Shoot) bool {
+	if len(p.ShootVersionConstraint) == 0 {
+		return true
+	}
+	c, err := semver.NewConstraint(p.ShootVersionConstraint)
+	if err != nil {
+		fmt.Printf("Error parsing version %v", err)
+		return false
+	}
+	v, err := semver.NewVersion(shoot.Spec.Kubernetes.Version)
+	if err != nil {
+		fmt.Printf("Error parsing version %v", err)
+		return false
+	}
+	return c.Check(v)
 }
 
 // Selector returns label selector for specific pod.
@@ -53,8 +75,30 @@ var (
 			"deny-all",
 		),
 	}
-	KubeControllerManagerInfo = &PodInfo{
-		PodName: "kube-controller-manager",
+
+	// KubeControllerManagerInfoSecured points to generic kube-controller-manager.
+	KubeControllerManagerInfoSecured = &PodInfo{
+		PodName: "kube-controller-manager-https",
+		Port:    10257,
+		Labels: labels.Set{
+			"app":                     "kubernetes",
+			"garden.sapcloud.io/role": "controlplane",
+			"role":                    "controller-manager",
+		},
+		ExpectedPolicies: sets.NewString(
+			"allow-to-public-networks",
+			"allow-to-private-networks",
+			"allow-from-prometheus",
+			"allow-to-dns",
+			"allow-to-metadata",
+			"allow-to-shoot-apiserver",
+			"deny-all",
+		),
+	}
+
+	// KubeControllerManagerInfoSecured points to generic kube-controller-manager.
+	KubeControllerManagerInfoNotSecured = &PodInfo{
+		PodName: "kube-controller-manager-http",
 		Port:    10252,
 		Labels: labels.Set{
 			"app":                     "kubernetes",
@@ -62,14 +106,35 @@ var (
 			"role":                    "controller-manager",
 		},
 		ExpectedPolicies: sets.NewString(
+			"allow-to-public-networks",
+			"allow-to-private-networks",
+			"allow-from-prometheus",
+			"allow-to-dns",
+			"allow-to-metadata",
+			"allow-to-shoot-apiserver",
+			"deny-all",
+		),
+	}
+
+	KubeSchedulerInfoSecured = &PodInfo{
+		PodName: "kube-scheduler-https",
+		Port:    10259,
+		Labels: labels.Set{
+			"app":                     "kubernetes",
+			"garden.sapcloud.io/role": "controlplane",
+			"role":                    "scheduler",
+		},
+		ExpectedPolicies: sets.NewString(
 			"allow-from-prometheus",
 			"allow-to-shoot-apiserver",
 			"allow-to-dns",
 			"deny-all",
 		),
+		ShootVersionConstraint: ">= 1.13",
 	}
-	KubeSchedulerInfo = &PodInfo{
-		PodName: "kube-scheduler",
+
+	KubeSchedulerInfoNotSecured = &PodInfo{
+		PodName: "kube-scheduler-http",
 		Port:    10251,
 		Labels: labels.Set{
 			"app":                     "kubernetes",
@@ -82,7 +147,9 @@ var (
 			"allow-to-dns",
 			"deny-all",
 		),
+		ShootVersionConstraint: "< 1.13",
 	}
+
 	EtcdMainInfo = &PodInfo{
 		PodName: "etcd-main",
 		Port:    2379,
@@ -115,8 +182,8 @@ var (
 			"deny-all",
 		),
 	}
-	CloudControllerManagerInfo = &PodInfo{
-		PodName: "cloud-controller-manager",
+	CloudControllerManagerInfoNotSecured = &PodInfo{
+		PodName: "cloud-controller-manager-http",
 		Port:    10253,
 		Labels: labels.Set{
 			"app":                     "kubernetes",
@@ -132,7 +199,29 @@ var (
 			"allow-to-metadata",
 			"deny-all",
 		),
+		ShootVersionConstraint: "< 1.13",
 	}
+
+	CloudControllerManagerInfoSecured = &PodInfo{
+		PodName: "cloud-controller-manager-https",
+		Port:    10258,
+		Labels: labels.Set{
+			"app":                     "kubernetes",
+			"garden.sapcloud.io/role": "controlplane",
+			"role":                    "cloud-controller-manager",
+		},
+		ExpectedPolicies: sets.NewString(
+			"allow-from-prometheus",
+			"allow-to-shoot-apiserver",
+			"allow-to-dns",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
+			"allow-to-metadata",
+			"deny-all",
+		),
+		ShootVersionConstraint: ">= 1.13",
+	}
+
 	ElasticSearchInfo = &PodInfo{
 		PodName: "elasticsearch-logging",
 		Port:    9200,

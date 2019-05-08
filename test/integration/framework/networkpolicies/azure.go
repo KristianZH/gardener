@@ -16,31 +16,9 @@ package networkpolicies
 
 import (
 	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 var (
-
-	// AzureKubeControllerManagerInfo points to azure-specific kube-controller-manager.
-	AzureKubeControllerManagerInfo = &PodInfo{
-		PodName: "kube-controller-manager",
-		Port:    10252,
-		Labels: labels.Set{
-			"app":                     "kubernetes",
-			"garden.sapcloud.io/role": "controlplane",
-			"role":                    "controller-manager",
-		},
-		ExpectedPolicies: sets.NewString(
-			"allow-to-public-networks",
-			"allow-to-private-networks",
-			"allow-from-prometheus",
-			"allow-to-dns",
-			"allow-to-metadata",
-			"allow-to-shoot-apiserver",
-			"deny-all",
-		),
-	}
 
 	// AzureMetadataServiceHost points to azure-specific Metadata service.
 	AzureMetadataServiceHost = &Host{
@@ -63,13 +41,16 @@ func (a *AzurePodInfo) ToSources() []Source {
 		a.newSource(KubeAPIServerInfo).AllowPod(EtcdMainInfo, EtcdEventsInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(EtcdMainInfo).AllowHost(ExternalHost).Build(),
 		a.newSource(EtcdEventsInfo).AllowHost(ExternalHost).Build(),
-		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(AzureMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).AllowHost(AzureMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfoSecured).AllowPod(KubeAPIServerInfo).AllowHost(AzureMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(ElasticSearchInfo).Build(),
 		a.newSource(GrafanaInfo).AllowPod(PrometheusInfo).Build(),
 		a.newSource(KibanaInfo).AllowPod(ElasticSearchInfo).Build(),
 		a.newSource(AddonManagerInfo).AllowPod(KubeAPIServerInfo).Build(),
-		a.newSource(AzureKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(AzureMetadataServiceHost, ExternalHost).Build(),
-		a.newSource(KubeSchedulerInfo).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).AllowHost(AzureMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(KubeControllerManagerInfoSecured).AllowPod(KubeAPIServerInfo).AllowHost(AzureMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(KubeSchedulerInfoNotSecured).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeSchedulerInfoSecured).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsShootInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsSeedInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(MachineControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
@@ -77,9 +58,12 @@ func (a *AzurePodInfo) ToSources() []Source {
 			KubeAPIServerInfo,
 			EtcdMainInfo,
 			EtcdEventsInfo,
-			CloudControllerManagerInfo,
-			AzureKubeControllerManagerInfo,
-			KubeSchedulerInfo,
+			CloudControllerManagerInfoNotSecured,
+			CloudControllerManagerInfoSecured,
+			KubeControllerManagerInfoNotSecured,
+			KubeControllerManagerInfoSecured,
+			KubeSchedulerInfoNotSecured,
+			KubeSchedulerInfoSecured,
 			KubeStateMetricsShootInfo,
 			KubeStateMetricsSeedInfo,
 			MachineControllerManagerInfo,
@@ -91,11 +75,14 @@ func (a *AzurePodInfo) ToSources() []Source {
 func (a *AzurePodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
 		{*KubeAPIServerInfo, true},
-		{*AzureKubeControllerManagerInfo, false},
-		{*KubeSchedulerInfo, false},
+		{*KubeControllerManagerInfoNotSecured, false},
+		{*KubeControllerManagerInfoSecured, false},
+		{*KubeSchedulerInfoNotSecured, false},
+		{*KubeSchedulerInfoSecured, false},
 		{*EtcdMainInfo, false},
 		{*EtcdEventsInfo, false},
-		{*CloudControllerManagerInfo, false},
+		{*CloudControllerManagerInfoNotSecured, false},
+		{*CloudControllerManagerInfoSecured, false},
 		{*ElasticSearchInfo, false},
 		{*GrafanaInfo, false},
 		{*KibanaInfo, false},
@@ -110,11 +97,14 @@ func (a *AzurePodInfo) EgressFromOtherNamespaces() []TargetPod {
 func (a *AzurePodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 	denyAll := []*PodInfo{
 		KubeAPIServerInfo,
-		AzureKubeControllerManagerInfo,
-		KubeSchedulerInfo,
+		KubeControllerManagerInfoNotSecured,
+		KubeControllerManagerInfoSecured,
+		KubeSchedulerInfoNotSecured,
+		KubeSchedulerInfoSecured,
 		EtcdMainInfo,
 		EtcdEventsInfo,
-		CloudControllerManagerInfo,
+		CloudControllerManagerInfoNotSecured,
+		CloudControllerManagerInfoSecured,
 		ElasticSearchInfo,
 		GrafanaInfo,
 		KibanaInfo,

@@ -395,7 +395,11 @@ func BootstrapCluster(seed *Seed, secrets map[string]*corev1.Secret, imageVector
 	applierOptions.MergeFuncs[vpaGK] = retainStatusInformation
 	applierOptions.MergeFuncs[issuerGK] = retainStatusInformation
 
-	privateNetworks, err := common.ToExceptNetworks(seed.Info.Spec.Networks.Nodes, seed.Info.Spec.Networks.Pods, seed.Info.Spec.Networks.Services)
+	privateNetworks, err := common.ToExceptNetworks(
+		common.AllPrivateNetworkBlocks(),
+		seed.Info.Spec.Networks.Nodes,
+		seed.Info.Spec.Networks.Pods,
+		seed.Info.Spec.Networks.Services)
 	if err != nil {
 		return err
 	}

@@ -224,6 +224,9 @@ Context("components are selected by correct policies", func() {
 	var (
 		assertHasNetworkPolicy = func(podInfo *networkpolicies.PodInfo) func(context.Context) {
 			return func(ctx context.Context) {
+				if !podInfo.CheckVersion(shootTestOperations.Shoot) {
+					Skip("Component doesn't match Shoot version contstraints. Skipping.")
+				}
 
 				matched := sets.NewString()
 				var podLabelSet labels.Set
@@ -276,9 +279,9 @@ Context("egress for mirrored pods", func() {
 			}
 		}
 
-		assertEgresssToHost = func(targetHost *networkpolicies.TargetHost) func(context.Context) {
+		assertEgresssToHost = func(targetHost *networkpolicies.Host, allowed bool) func(context.Context) {
 			return func(ctx context.Context) {
-				assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(sourcePod, sharedResources.Mirror), targetHost)
+				assertConnectToHost(ctx, networkpolicies.NewNamespacedPodInfo(sourcePod, sharedResources.Mirror), targetHost, allowed)
 			}
 		}
 	)
@@ -301,7 +304,7 @@ Context("$.podName$", func() {
 			}
 		}
 		for _, h := range s.TargetHosts {
-			sw.Do(`CIt("$.description$", assertEgresssToHost($.targetVarName$), DefaultTestTimeout)`, g.simpleArgs("description", h.ToString(), "targetVarName", hostToVariableName(&h.Host)))
+			sw.Do(`CIt("$.description$", assertEgresssToHost($.targetVarName$, $.allowed$), DefaultTestTimeout)`, g.simpleArgs("description", h.ToString(), "targetVarName", hostToVariableName(&h.Host), "allowed", h.Allowed))
 			sw.Do("\n", nil)
 		}
 
@@ -386,7 +389,7 @@ func (g *genTest) flattenPods() map[string]string {
 		for _, h := range s.TargetHosts {
 			fHostName := hostToVariableName(&h.Host)
 			if _, exists := fPods[fHostName]; !exists {
-				fPods[fHostName] = prettyPrint(h)
+				fPods[fHostName] = prettyPrint(h.Host)
 			}
 		}
 	}
@@ -491,6 +494,9 @@ var _ = Describe("Network Policy Testing", func() {
 		}
 
 		getTargetPod = func(ctx context.Context, targetPod *networkpolicies.NamespacedPodInfo) *corev1.Pod {
+			if !targetPod.CheckVersion(shootTestOperations.Shoot) {
+				Skip("Target pod doesn't match Shoot version contstraints. Skipping.")
+			}
 			By(fmt.Sprintf("Checking that target Pod: %s is running", targetPod.PodName))
 			err := shootTestOperations.WaitUntilPodIsRunningWithLabels(ctx, targetPod.Selector(), targetPod.Namespace, shootTestOperations.SeedClient)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -503,6 +509,9 @@ var _ = Describe("Network Policy Testing", func() {
 		}
 
 		establishConnectionToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, host string, port int32) (io.Reader, error) {
+			if !sourcePod.CheckVersion(shootTestOperations.Shoot) {
+				Skip("Source pod doesn't match Shoot version contstraints. Skipping.")
+			}
 			By(fmt.Sprintf("Checking for source Pod: %s is running", sourcePod.PodName))
 			err := shootTestOperations.WaitUntilPodIsRunningWithLabels(ctx, sourcePod.Selector(), sourcePod.Namespace, shootTestOperations.SeedClient)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -547,9 +556,9 @@ var _ = Describe("Network Policy Testing", func() {
 			assertCannotConnectToHost(ctx, sourcePod, pod.Status.PodIP, targetPod.Port)
 		}
 
-		assertConnectToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, target *networkpolicies.TargetHost) {
-			r, err := establishConnectionToHost(ctx, sourcePod, target.Host.HostName, target.Host.Port)
-			if target.Allowed {
+		assertConnectToHost = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetHost *networkpolicies.Host, allowed bool) {
+			r, err := establishConnectionToHost(ctx, sourcePod, targetHost.HostName, targetHost.Port)
+			if allowed {
 				ExpectWithOffset(1, err).NotTo(HaveOccurred())
 				ExpectWithOffset(1, r).NotTo(BeNil())
 			} else {
@@ -564,13 +573,10 @@ var _ = Describe("Network Policy Testing", func() {
 
 		assertConnectToPod = func(ctx context.Context, sourcePod *networkpolicies.NamespacedPodInfo, targetPod *networkpolicies.NamespacedPodInfo, allowed bool) {
 			pod := getTargetPod(ctx, targetPod)
-			assertConnectToHost(ctx, sourcePod, &networkpolicies.TargetHost{
-				Allowed: allowed,
-				Host: networkpolicies.Host{
-					HostName: pod.Status.PodIP,
-					Port:     targetPod.Port,
-				},
-			})
+			assertConnectToHost(ctx, sourcePod, &networkpolicies.Host{
+				HostName: pod.Status.PodIP,
+				Port:     targetPod.Port,
+			}, allowed)
 		}
 
 `
@@ -655,6 +661,9 @@ var setBody = `
 			go func(pi *networkpolicies.PodInfo) {
 				defer GinkgoRecover()
 				defer wg.Done()
+				if !pi.CheckVersion(shootTestOperations.Shoot) {
+					return
+				}
 				pod, err := shootTestOperations.GetFirstRunningPodWithLabels(ctx, pi.Selector(), shootTestOperations.ShootSeedNamespace(), shootTestOperations.SeedClient)
 				Expect(err).NotTo(HaveOccurred())
 				cpy := *pi
@@ -700,7 +709,7 @@ var setBody = `
 	})
 
 	SynchronizedAfterSuite(func() {
-		if *cleanup {
+		if !*cleanup {
 			return
 		}
 

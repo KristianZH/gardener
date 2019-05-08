@@ -20,40 +20,43 @@ import (
 	gardencorev1alpha1 "github.com/gardener/gardener/pkg/apis/core/v1alpha1"
 )
 
-var (
-	// Private networks (RFC1918)
-	private8BitBlock  = &net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}
-	private12BitBlock = &net.IPNet{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)}
-	private16BitBlock = &net.IPNet{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)}
-
-	// Carrier-grade NAT (RFC 6598)
-	carrierGradeNATBlock = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
-)
-
-// Private8BitBlockContains returns CIDRs which are part of 10.0.0.0/8 block.
-func Private8BitBlockContains(cidrs ...gardencorev1alpha1.CIDR) ([]gardencorev1alpha1.CIDR, error) {
-	return excludeBlock(private8BitBlock, cidrs...)
+// Private8BitBlock returns a private network (RFC1918) 10.0.0.0/8 IPv4 block
+func Private8BitBlock() *net.IPNet {
+	return &net.IPNet{IP: net.IP{10, 0, 0, 0}, Mask: net.CIDRMask(8, 32)}
 }
 
-// Private12BitBlockContains returns CIDRs which are part of 172.16.0.0/12 block.
-func Private12BitBlockContains(cidrs ...gardencorev1alpha1.CIDR) ([]gardencorev1alpha1.CIDR, error) {
-	return excludeBlock(private12BitBlock, cidrs...)
+// Private12BitBlock returns a private network (RFC1918) 172.16.0.0/12 IPv4 block
+func Private12BitBlock() *net.IPNet {
+	return &net.IPNet{IP: net.IP{172, 16, 0, 0}, Mask: net.CIDRMask(12, 32)}
 }
 
-// Private16BitBlockContains returns CIDRs which are part of 192.168.0.0/16 block.
-func Private16BitBlockContains(cidrs ...gardencorev1alpha1.CIDR) ([]gardencorev1alpha1.CIDR, error) {
-	return excludeBlock(private16BitBlock, cidrs...)
+// Private16BitBlock returns a private network (RFC1918) 192.168.0.0/16 IPv4 block
+func Private16BitBlock() *net.IPNet {
+	return &net.IPNet{IP: net.IP{192, 168, 0, 0}, Mask: net.CIDRMask(16, 32)}
 }
 
-// CarrierGradeNATBlockContains returns CIDRs which are part of 100.64.0.0/10 block.
-func CarrierGradeNATBlockContains(cidrs ...gardencorev1alpha1.CIDR) ([]gardencorev1alpha1.CIDR, error) {
-	return excludeBlock(carrierGradeNATBlock, cidrs...)
+// CarrierGradeNATBlock returns a carrier-grade NAT (RFC 6598) 100.64.0.0/10 IPv4 block
+func CarrierGradeNATBlock() *net.IPNet {
+	return &net.IPNet{IP: net.IP{100, 64, 0, 0}, Mask: net.CIDRMask(10, 32)}
 }
 
-// ToExceptNetworks returns a list of maps with `network` key containing private (RFC1918) and Carrier-grade NAT (RFC 6598) CIDRs
+// AllPrivateNetworkBlocks returns a list of all Private network (RFC1918) and
+// Carrier-grade NAT (RFC 6598) IPv4 blocks.
+func AllPrivateNetworkBlocks() []net.IPNet {
+	return []net.IPNet{
+		*Private8BitBlock(),
+		*Private12BitBlock(),
+		*Private16BitBlock(),
+		*CarrierGradeNATBlock(),
+	}
+}
+
+// ToExceptNetworks returns a list of maps with `network` key containing one of `networks`
 // and `except` key containgn list of `cidr` which are part of those CIDRs.
 //
-// Calling `ToExceptNetworks("10.10.0.0/24","172.16.1.0/24","192.168.1.0/24","100.64.1.0/24")` produces:
+// Calling
+// `ToExceptNetworks(AllPrivateNetworkBlocks(),"10.10.0.0/24","172.16.1.0/24","192.168.1.0/24","100.64.1.0/24")`
+// produces:
 //
 // [
 //		{"network": "10.0.0.0/8", "except": ["10.10.0.0/24"]},
@@ -61,49 +64,33 @@ func CarrierGradeNATBlockContains(cidrs ...gardencorev1alpha1.CIDR) ([]gardencor
 //		{"network": "192.168.0.0/16", "except": ["192.168.1.0/24"]},
 //		{"network": "100.64.0.0/10", "except": ["100.64.1.0/24"]},
 // ]
-func ToExceptNetworks(cidrs ...gardencorev1alpha1.CIDR) ([]interface{}, error) {
+func ToExceptNetworks(networks []net.IPNet, except ...gardencorev1alpha1.CIDR) ([]interface{}, error) {
+	result := []interface{}{}
 
-	matched8Bit, err := Private8BitBlockContains(cidrs...)
-	if err != nil {
-		return nil, err
+	for _, n := range networks {
+		excluded, err := excludeBlock(&n, except...)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, map[string]interface{}{
+			"network": n.String(),
+			"except":  excluded,
+		})
 	}
+	return result, nil
+}
 
-	matched12Bit, err := Private12BitBlockContains(cidrs...)
-	if err != nil {
-		return nil, err
+func ExceptNetworks(networks []gardencorev1alpha1.CIDR, except ...gardencorev1alpha1.CIDR) ([]interface{}, error) {
+	ipNets := []net.IPNet{}
+	for _, n := range networks {
+		_, net, err := net.ParseCIDR(string(n))
+		if err != nil {
+			return nil, err
+		}
+		ipNets = append(ipNets, *net)
 	}
-
-	matched16Bit, err := Private16BitBlockContains(cidrs...)
-	if err != nil {
-		return nil, err
-	}
-
-	matchedCarrierGradeNat, err := CarrierGradeNATBlockContains(cidrs...)
-	if err != nil {
-		return nil, err
-	}
-
-	values := []interface{}{
-		map[string]interface{}{
-			"network": private8BitBlock.String(),
-			"except":  matched8Bit,
-		},
-		map[string]interface{}{
-			"network": private12BitBlock.String(),
-			"except":  matched12Bit,
-		},
-		map[string]interface{}{
-			"network": private16BitBlock.String(),
-			"except":  matched16Bit,
-		},
-		map[string]interface{}{
-			"network": carrierGradeNATBlock.String(),
-			"except":  matchedCarrierGradeNat,
-		},
-	}
-
-	return values, nil
-
+	return ToExceptNetworks(ipNets, except...)
 }
 
 func excludeBlock(parentBlock *net.IPNet, cidrs ...gardencorev1alpha1.CIDR) ([]gardencorev1alpha1.CIDR, error) {

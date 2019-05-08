@@ -22,9 +22,48 @@ import (
 
 var (
 
-	// AlicloudKubeControllerManagerInfo points to alicloud-specific kube-controller-manager.
-	AlicloudKubeControllerManagerInfo = &PodInfo{
-		PodName: "kube-controller-manager",
+	// AlicloudCloudControllerManagerInfoNotSecured points to alicloud-specific cloud-controller-manager.
+	// For now it listens only on HTTP for all Shoot versions.
+	AlicloudCloudControllerManagerInfoNotSecured = &PodInfo{
+		PodName: "cloud-controller-manager-http",
+		Port:    10253,
+		Labels: labels.Set{
+			"app":                     "kubernetes",
+			"garden.sapcloud.io/role": "controlplane",
+			"role":                    "cloud-controller-manager",
+		},
+		ExpectedPolicies: sets.NewString(
+			"allow-from-prometheus",
+			"allow-to-shoot-apiserver",
+			"allow-to-dns",
+			"allow-to-public-networks",
+			"allow-to-private-networks",
+			"allow-to-metadata",
+			"deny-all",
+		),
+	}
+
+	// AlicloudKubeControllerManagerInfoSecured points to alicloud-specific kube-controller-manager.
+	AlicloudKubeControllerManagerInfoSecured = &PodInfo{
+		PodName: "kube-controller-manager-https",
+		Port:    10257,
+		Labels: labels.Set{
+			"app":                     "kubernetes",
+			"garden.sapcloud.io/role": "controlplane",
+			"role":                    "controller-manager",
+		},
+		ExpectedPolicies: sets.NewString(
+			"allow-from-prometheus",
+			"allow-to-dns",
+			"allow-to-shoot-apiserver",
+			"deny-all",
+		),
+		ShootVersionConstraint: ">= 1.13",
+	}
+
+	// AlicloudKubeControllerManagerInfoNotSecured points to alicloud-specific kube-controller-manager.
+	AlicloudKubeControllerManagerInfoNotSecured = &PodInfo{
+		PodName: "kube-controller-manager-http",
 		Port:    10252,
 		Labels: labels.Set{
 			"app":                     "kubernetes",
@@ -37,6 +76,7 @@ var (
 			"allow-to-shoot-apiserver",
 			"deny-all",
 		),
+		ShootVersionConstraint: "< 1.13",
 	}
 
 	// AlicloudCSIPluginInfo points to alicloud-specific CSI Plugin.
@@ -78,13 +118,15 @@ func (a *AlicloudPodInfo) ToSources() []Source {
 		a.newSource(KubeAPIServerInfo).AllowPod(EtcdMainInfo, EtcdEventsInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(EtcdMainInfo).AllowHost(ExternalHost).Build(),
 		a.newSource(EtcdEventsInfo).AllowHost(ExternalHost).Build(),
-		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(AlicloudMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(AlicloudCloudControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).AllowHost(AlicloudMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(ElasticSearchInfo).Build(),
 		a.newSource(GrafanaInfo).AllowPod(PrometheusInfo).Build(),
 		a.newSource(KibanaInfo).AllowPod(ElasticSearchInfo).Build(),
 		a.newSource(AddonManagerInfo).AllowPod(KubeAPIServerInfo).Build(),
-		a.newSource(AlicloudKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).Build(),
-		a.newSource(KubeSchedulerInfo).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(AlicloudKubeControllerManagerInfoSecured).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(AlicloudKubeControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeSchedulerInfoNotSecured).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeSchedulerInfoSecured).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsShootInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsSeedInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(MachineControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
@@ -93,9 +135,11 @@ func (a *AlicloudPodInfo) ToSources() []Source {
 			KubeAPIServerInfo,
 			EtcdMainInfo,
 			EtcdEventsInfo,
-			CloudControllerManagerInfo,
-			AlicloudKubeControllerManagerInfo,
-			KubeSchedulerInfo,
+			AlicloudCloudControllerManagerInfoNotSecured,
+			AlicloudKubeControllerManagerInfoNotSecured,
+			AlicloudKubeControllerManagerInfoSecured,
+			KubeSchedulerInfoNotSecured,
+			KubeSchedulerInfoSecured,
 			KubeStateMetricsShootInfo,
 			KubeStateMetricsSeedInfo,
 			MachineControllerManagerInfo,
@@ -107,11 +151,13 @@ func (a *AlicloudPodInfo) ToSources() []Source {
 func (a *AlicloudPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
 		{*KubeAPIServerInfo, true},
-		{*AlicloudKubeControllerManagerInfo, false},
-		{*KubeSchedulerInfo, false},
+		{*AlicloudKubeControllerManagerInfoSecured, false},
+		{*AlicloudKubeControllerManagerInfoNotSecured, false},
+		{*KubeSchedulerInfoNotSecured, false},
+		{*KubeSchedulerInfoSecured, false},
 		{*EtcdMainInfo, false},
 		{*EtcdEventsInfo, false},
-		{*CloudControllerManagerInfo, false},
+		{*AlicloudCloudControllerManagerInfoNotSecured, false},
 		{*ElasticSearchInfo, false},
 		{*GrafanaInfo, false},
 		{*KibanaInfo, false},
@@ -127,11 +173,13 @@ func (a *AlicloudPodInfo) EgressFromOtherNamespaces() []TargetPod {
 func (a *AlicloudPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 	denyAll := []*PodInfo{
 		KubeAPIServerInfo,
-		AlicloudKubeControllerManagerInfo,
-		KubeSchedulerInfo,
+		AlicloudKubeControllerManagerInfoSecured,
+		AlicloudKubeControllerManagerInfoNotSecured,
+		KubeSchedulerInfoNotSecured,
+		KubeSchedulerInfoSecured,
 		EtcdMainInfo,
 		EtcdEventsInfo,
-		CloudControllerManagerInfo,
+		AlicloudCloudControllerManagerInfoNotSecured,
 		ElasticSearchInfo,
 		GrafanaInfo,
 		KibanaInfo,

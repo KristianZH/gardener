@@ -16,15 +16,7 @@ spec:
       networking.gardener.cloud/to-shoot-networks: allowed
   egress:
   - to:
-    # Nodes CIDR
-    - ipBlock:
-        cidr: {{ required "shoot.nodes is required" .Values.shoot.nodes }}
-    # Pods CIDR
-    - ipBlock:
-        cidr: {{ required "shoot.pods is required" .Values.shoot.pods }}
-    # Services CIDR
-    - ipBlock:
-        cidr: {{ required "shoot.services is required" .Values.shoot.services }}
+{{ template "global-network-policies.except-networks" .Values.clusterNetworks }}
   policyTypes:
   - Egress
   ingress: []

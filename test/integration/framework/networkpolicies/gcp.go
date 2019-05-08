@@ -16,31 +16,9 @@ package networkpolicies
 
 import (
 	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 var (
-
-	// GCPKubeControllerManagerInfo points to gcp-specific kube-controller-manager.
-	GCPKubeControllerManagerInfo = &PodInfo{
-		PodName: "kube-controller-manager",
-		Port:    10252,
-		Labels: labels.Set{
-			"app":                     "kubernetes",
-			"garden.sapcloud.io/role": "controlplane",
-			"role":                    "controller-manager",
-		},
-		ExpectedPolicies: sets.NewString(
-			"allow-to-public-networks",
-			"allow-to-private-networks",
-			"allow-from-prometheus",
-			"allow-to-dns",
-			"allow-to-metadata",
-			"allow-to-shoot-apiserver",
-			"deny-all",
-		),
-	}
 
 	// GCPMetadataServiceHost points to gcp-specific Metadata service.
 	GCPMetadataServiceHost = &Host{
@@ -63,13 +41,16 @@ func (a *GCPPodInfo) ToSources() []Source {
 		a.newSource(KubeAPIServerInfo).AllowPod(EtcdMainInfo, EtcdEventsInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(EtcdMainInfo).AllowHost(ExternalHost).Build(),
 		a.newSource(EtcdEventsInfo).AllowHost(ExternalHost).Build(),
-		a.newSource(CloudControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(CloudControllerManagerInfoSecured).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
 		a.newSource(ElasticSearchInfo).Build(),
 		a.newSource(GrafanaInfo).AllowPod(PrometheusInfo).Build(),
 		a.newSource(KibanaInfo).AllowPod(ElasticSearchInfo).Build(),
 		a.newSource(AddonManagerInfo).AllowPod(KubeAPIServerInfo).Build(),
-		a.newSource(GCPKubeControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
-		a.newSource(KubeSchedulerInfo).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeControllerManagerInfoNotSecured).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(KubeControllerManagerInfoSecured).AllowPod(KubeAPIServerInfo).AllowHost(GCPMetadataServiceHost, ExternalHost).Build(),
+		a.newSource(KubeSchedulerInfoNotSecured).AllowPod(KubeAPIServerInfo).Build(),
+		a.newSource(KubeSchedulerInfoSecured).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsShootInfo).AllowPod(KubeAPIServerInfo).Build(),
 		a.newSource(KubeStateMetricsSeedInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
 		a.newSource(MachineControllerManagerInfo).AllowPod(KubeAPIServerInfo).AllowHost(SeedKubeAPIServer, ExternalHost).Build(),
@@ -77,9 +58,12 @@ func (a *GCPPodInfo) ToSources() []Source {
 			KubeAPIServerInfo,
 			EtcdMainInfo,
 			EtcdEventsInfo,
-			CloudControllerManagerInfo,
-			GCPKubeControllerManagerInfo,
-			KubeSchedulerInfo,
+			CloudControllerManagerInfoNotSecured,
+			CloudControllerManagerInfoSecured,
+			KubeControllerManagerInfoNotSecured,
+			KubeControllerManagerInfoSecured,
+			KubeSchedulerInfoNotSecured,
+			KubeSchedulerInfoSecured,
 			KubeStateMetricsShootInfo,
 			KubeStateMetricsSeedInfo,
 			MachineControllerManagerInfo,
@@ -91,11 +75,14 @@ func (a *GCPPodInfo) ToSources() []Source {
 func (a *GCPPodInfo) EgressFromOtherNamespaces() []TargetPod {
 	return []TargetPod{
 		{*KubeAPIServerInfo, true},
-		{*GCPKubeControllerManagerInfo, false},
-		{*KubeSchedulerInfo, false},
+		{*KubeControllerManagerInfoNotSecured, false},
+		{*KubeControllerManagerInfoSecured, false},
+		{*KubeSchedulerInfoNotSecured, false},
+		{*KubeSchedulerInfoSecured, false},
 		{*EtcdMainInfo, false},
 		{*EtcdEventsInfo, false},
-		{*CloudControllerManagerInfo, false},
+		{*CloudControllerManagerInfoNotSecured, false},
+		{*CloudControllerManagerInfoSecured, false},
 		{*ElasticSearchInfo, false},
 		{*GrafanaInfo, false},
 		{*KibanaInfo, false},
@@ -110,11 +97,12 @@ func (a *GCPPodInfo) EgressFromOtherNamespaces() []TargetPod {
 func (a *GCPPodInfo) newSource(sourcePod *PodInfo) *SourceBuilder {
 	denyAll := []*PodInfo{
 		KubeAPIServerInfo,
-		GCPKubeControllerManagerInfo,
-		KubeSchedulerInfo,
+		KubeControllerManagerInfoNotSecured,
+		KubeSchedulerInfoSecured,
 		EtcdMainInfo,
 		EtcdEventsInfo,
-		CloudControllerManagerInfo,
+		CloudControllerManagerInfoNotSecured,
+		CloudControllerManagerInfoSecured,
 		ElasticSearchInfo,
 		GrafanaInfo,
 		KibanaInfo,

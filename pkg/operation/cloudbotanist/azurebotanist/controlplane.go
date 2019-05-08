@@ -22,18 +22,6 @@ import (
 	"github.com/gardener/gardener/pkg/utils"
 )
 
-var (
-	metadataService *net.IPNet
-)
-
-func init() {
-	_, cidr, err := net.ParseCIDR("169.254.169.254/32")
-	if err != nil {
-		panic(err)
-	}
-	metadataService = cidr
-}
-
 const cloudProviderConfigTemplate = `
 cloud: AZUREPUBLICCLOUD
 tenantId: %q
@@ -179,7 +167,7 @@ func (b *AzureBotanist) GenerateCSIConfig() (map[string]interface{}, error) {
 
 // MetadataServiceAddress returns Azure's MetadataService address
 func (b *AzureBotanist) MetadataServiceAddress() *net.IPNet {
-	return metadataService
+	return &net.IPNet{IP: net.IP{169, 254, 169, 254}, Mask: net.CIDRMask(32, 32)}
 }
 
 // GenerateKubeControllerManagerConfig generates the cloud provider specific values which are required to

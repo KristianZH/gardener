@@ -15,6 +15,8 @@
 package common_test
 
 import (
+	"net"
+
 	gardencorev1alpha1 "github.com/gardener/gardener/pkg/apis/core/v1alpha1"
 	. "github.com/gardener/gardener/pkg/operation/common"
 
@@ -24,106 +26,16 @@ import (
 
 var _ = Describe("networkpolicies", func() {
 
-	Describe("Contains functions", func() {
+	Describe("#AllPrivateNetworkBlocks", func() {
 
-		var (
-			input       []gardencorev1alpha1.CIDR
-			result      []gardencorev1alpha1.CIDR
-			resultError error
-		)
-
-		BeforeEach(func() {
-			input = nil
-			result = nil
-			resultError = nil
+		It("should contain correct CIDRs", func() {
+			result := AllPrivateNetworkBlocks()
+			_, block8, _ := net.ParseCIDR("10.0.0.0/8")
+			_, block12, _ := net.ParseCIDR("172.16.0.0/12")
+			_, block16, _ := net.ParseCIDR("192.168.0.0/16")
+			_, carrierGradeBlock, _ := net.ParseCIDR("100.64.0.0/10")
+			Expect(result).To(ConsistOf(*block8, *block12, *block16, *carrierGradeBlock))
 		})
-
-		type testcase struct {
-			name            string
-			function        func(cidrs ...gardencorev1alpha1.CIDR) ([]gardencorev1alpha1.CIDR, error)
-			notOverlapping  []gardencorev1alpha1.CIDR
-			overLapping     []gardencorev1alpha1.CIDR
-			expectedMatched []gardencorev1alpha1.CIDR
-		}
-
-		cases := []testcase{
-			{
-				name:            "#Private8BitBlockContains",
-				function:        Private8BitBlockContains,
-				notOverlapping:  []gardencorev1alpha1.CIDR{"1.1.1.1/32", "1.1.1.2/32"},
-				overLapping:     []gardencorev1alpha1.CIDR{"1.1.1.1/32", "10.10.0.0/24"},
-				expectedMatched: []gardencorev1alpha1.CIDR{"10.10.0.0/24"},
-			}, {
-				name:            "#Private12BitBlockContains",
-				function:        Private12BitBlockContains,
-				notOverlapping:  []gardencorev1alpha1.CIDR{"1.1.1.1/32", "1.1.1.2/32"},
-				overLapping:     []gardencorev1alpha1.CIDR{"1.1.1.1/32", "172.16.1.0/24"},
-				expectedMatched: []gardencorev1alpha1.CIDR{"172.16.1.0/24"},
-			}, {
-				name:            "#Private16BitBlockContains",
-				function:        Private16BitBlockContains,
-				notOverlapping:  []gardencorev1alpha1.CIDR{"1.1.1.1/32", "1.1.1.2/32"},
-				overLapping:     []gardencorev1alpha1.CIDR{"1.1.1.1/32", "192.168.1.0/24"},
-				expectedMatched: []gardencorev1alpha1.CIDR{"192.168.1.0/24"},
-			}, {
-				name:            "#CarrierGradeNATBlockContains",
-				function:        CarrierGradeNATBlockContains,
-				notOverlapping:  []gardencorev1alpha1.CIDR{"1.1.1.1/32", "1.1.1.2/32"},
-				overLapping:     []gardencorev1alpha1.CIDR{"1.1.1.1/32", "100.64.1.0/24"},
-				expectedMatched: []gardencorev1alpha1.CIDR{"100.64.1.0/24"},
-			},
-		}
-
-		for _, tc := range cases {
-			tc := tc
-			Context(tc.name, func() {
-				JustBeforeEach(func() {
-					result, resultError = tc.function(input...)
-				})
-
-				Context("when invalid CIDR is provided", func() {
-					BeforeEach(func() {
-						input = []gardencorev1alpha1.CIDR{"foo"}
-					})
-
-					It("should return error", func() {
-						Expect(resultError).To(HaveOccurred())
-					})
-
-					It("should not return any CIDRs", func() {
-						Expect(result).To(BeEmpty())
-					})
-				})
-
-				Context("when valid not overlapping CIDR is provided", func() {
-					BeforeEach(func() {
-						input = tc.notOverlapping
-					})
-
-					It("should not return error", func() {
-						Expect(resultError).ToNot(HaveOccurred())
-					})
-
-					It("should not return any CIDRs", func() {
-						Expect(result).To(BeEmpty())
-					})
-				})
-
-				Context("when valid overlapping CIDR is provided", func() {
-					BeforeEach(func() {
-						input = tc.overLapping
-					})
-
-					It("should not return error", func() {
-						Expect(resultError).ToNot(HaveOccurred())
-					})
-
-					It("should return only matched CIDRs", func() {
-						Expect(result).To(ConsistOf(tc.expectedMatched))
-					})
-				})
-			})
-		}
 
 	})
 
@@ -131,7 +43,7 @@ var _ = Describe("networkpolicies", func() {
 
 		It("should return correct result", func() {
 
-			result, err := ToExceptNetworks("10.10.0.0/24", "172.16.1.0/24", "192.168.1.0/24", "100.64.1.0/24")
+			result, err := ToExceptNetworks(AllPrivateNetworkBlocks(), "10.10.0.0/24", "172.16.1.0/24", "192.168.1.0/24", "100.64.1.0/24")
 			expectedResult := []interface{}{
 				map[string]interface{}{
 					"network": "10.0.0.0/8",

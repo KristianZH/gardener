@@ -27,18 +27,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-var (
-	metadataService *net.IPNet
-)
-
-func init() {
-	_, cidr, err := net.ParseCIDR("100.100.100.200/32")
-	if err != nil {
-		panic(err)
-	}
-	metadataService = cidr
-}
-
 type cloudConfig struct {
 	Global struct {
 		KubernetesClusterTag string
@@ -134,7 +122,7 @@ func (b *AlicloudBotanist) GenerateCloudControllerManagerConfig() (map[string]in
 
 // MetadataServiceAddress returns Aliyun's MetadataService address.
 func (b *AlicloudBotanist) MetadataServiceAddress() *net.IPNet {
-	return metadataService
+	return &net.IPNet{IP: net.IP{100, 100, 100, 200}, Mask: net.CIDRMask(32, 32)}
 }
 
 // GenerateKubeControllerManagerConfig generates the cloud provider specific values which are required to
